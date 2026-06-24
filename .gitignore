@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Data (large files)
+data/features/
+data/raw/
+
+# Checkpoints & logs
+checkpoints/
+runs/
+results/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Trae
+.trae/
+
+# Reference implementation (not part of project)
+svla_reference/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# CLIP vocab (large, can be regenerated)
+clip/bpe_simple_vocab_16e6.txt
