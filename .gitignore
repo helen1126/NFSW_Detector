@@ -7,21 +7,54 @@ __pycache__/
 *.egg
 dist/
 build/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Conda
+.conda/
 
 # Data (large files)
 data/features/
 data/raw/
+data/processed/
 
 # Checkpoints & logs
 checkpoints/
 runs/
 results/
+logs/
+*.pth
+*.pt
+*.ckpt
+
+# Models & weights (large files)
+weights/
+pretrained/
+
+# Outputs
+outputs/
+predictions/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-workspace
+*.sublime-project
 
 # Trae
 .trae/
@@ -32,8 +65,30 @@ svla_reference/
 # OS
 Thumbs.db
 .DS_Store
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
 
 # CLIP vocab (large, can be regenerated)
 clip/bpe_simple_vocab_16e6.txt
 
-.vscode/
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.log
+*.pid
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json

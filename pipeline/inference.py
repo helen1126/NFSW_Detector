@@ -10,6 +10,7 @@ from pipeline.preprocess import VideoPreprocessor
 from pipeline.feature_extractor import CLIPFeatureExtractor
 from models.svla import SVLA
 from models.classifier import LABEL_MAP, EN_TO_ZH
+from utils.tools import process_feat, get_prompt_text
 
 
 @dataclass
@@ -97,29 +98,29 @@ class NSFWDetector:
 
         features = np.concatenate(all_features, axis=0)
 
+        # 处理特征到模型期望的长度（visual_length），与训练时的 process_feat 一致
+        visual_length = self.model.visual_length
+        features, valid_length = process_feat(features, visual_length)
+
         with torch.inference_mode():
             features_tensor = torch.tensor(features, dtype=torch.float32, device=self.device)
             features_tensor = features_tensor.unsqueeze(0)
             B, S, D = features_tensor.shape
-            lengths = torch.tensor([S], dtype=torch.long)
+            lengths = torch.tensor([valid_length], dtype=torch.long)
             padding_mask = torch.arange(S, device=self.device).unsqueeze(0) >= lengths.unsqueeze(1).to(self.device)
-            text_list = list(self.config.get('label_map', {}).keys())
+            text_list = get_prompt_text(self.config.get('label_map', {}))
             text_features, logits1, logits2, shot_slices, attn_weights = self.model(
                 features_tensor, padding_mask, text_list, lengths
             )
             segment_scores = torch.sigmoid(logits1[:, 0]).cpu().numpy()
             if logits2 is not None:
-                class_probs = torch.softmax(logits2, dim=-1)
-                class_scores = class_probs[0].cpu().numpy()
+                class_probs = torch.softmax(logits2, dim=-1)  # [B, T, num_text]
+                class_scores_raw = class_probs[0].cpu().numpy()  # [T, num_text]
             else:
-                class_scores = np.zeros(len(LABEL_MAP))
+                class_scores_raw = np.zeros((1, len(LABEL_MAP) + 1))
             attention_weights = np.zeros(S)
 
-        if segment_scores.ndim == 1:
-            anomaly_score = float(np.max(segment_scores))
-        else:
-            weights = np.softmax(segment_scores, axis=-1)
-            anomaly_score = float(np.average(segment_scores, weights=weights.flatten()))
+        anomaly_score = float(np.max(segment_scores.reshape(-1)))
 
         is_harmful = anomaly_score >= self.threshold
 
@@ -131,15 +132,35 @@ class NSFWDetector:
             video_path, harmful_segments, segment_scores, timestamps
         )
 
+        # category_scores = 异常分数 × 条件概率
+        # 条件概率 P(cat_i | anomaly) = softmax(logits2)[i] / (1 - softmax(logits2)[0])
+        # 最终置信度 = anomaly_score × P(cat_i | anomaly)
         category_scores = {}
-        if class_scores.ndim == 1:
-            for idx, score in enumerate(class_scores):
-                cat_en = LABEL_MAP.get(idx, {}).get('en', f'class_{idx}')
-                category_scores[cat_en] = float(score)
+        if logits2 is not None and class_scores_raw.shape[0] > 0:
+            # 取异常分数最高的帧的类别分布（而非所有帧的最大值）
+            anomaly_frame_idx = int(np.argmax(segment_scores.reshape(-1)))
+            frame_probs = class_scores_raw[anomaly_frame_idx]  # [num_text]
+            normal_prob = float(frame_probs[0])
+            anomaly_prob = 1.0 - normal_prob
+
+            if anomaly_prob > 1e-6:
+                for idx in range(1, len(text_list)):
+                    cat_key = text_list[idx]
+                    cat_en = cat_key.capitalize()
+                    # 条件概率 × 异常分数
+                    conditional_prob = float(frame_probs[idx]) / anomaly_prob
+                    category_scores[cat_en] = anomaly_score * conditional_prob
+            else:
+                # 视频正常，各类别分数趋近 0
+                for idx in range(1, len(text_list)):
+                    cat_key = text_list[idx]
+                    cat_en = cat_key.capitalize()
+                    category_scores[cat_en] = 0.0
         else:
-            for idx in range(class_scores.shape[-1]):
-                cat_en = LABEL_MAP.get(idx, {}).get('en', f'class_{idx}')
-                category_scores[cat_en] = float(class_scores[..., idx].max())
+            for idx in range(1, len(text_list)):
+                cat_key = text_list[idx]
+                cat_en = cat_key.capitalize()
+                category_scores[cat_en] = 0.0
 
         predicted_categories = [
             cat for cat, score in sorted(category_scores.items(), key=lambda x: x[1], reverse=True)

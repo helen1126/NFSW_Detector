@@ -161,7 +161,7 @@ if __name__ == "__main__":
     elif args.command == "demo":
         from demo.app import create_app
         app = create_app(config_path=args.config, checkpoint_path=args.checkpoint)
-        app.launch(server_port=args.port, share=args.share, max_file_size=500)
+        app.launch(server_port=args.port, share=args.share, max_file_size=500 * 1024 * 1024)
 
     elif args.command == "export":
         config = load_config(args.config)

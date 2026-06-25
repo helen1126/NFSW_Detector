@@ -14,7 +14,7 @@ _alert_generator = None
 def get_detector(config_path, checkpoint_path):
     global _detector_instance, _alert_generator
     if _detector_instance is None:
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
         _detector_instance = NSFWDetector(config, checkpoint_path)
         _alert_generator = AlertGenerator(config)
@@ -107,4 +107,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     app = create_app(args.config, args.checkpoint)
-    app.launch(server_port=args.port, share=args.share, max_file_size=500)
+    app.launch(server_port=args.port, share=args.share, max_file_size=500 * 1024 * 1024)

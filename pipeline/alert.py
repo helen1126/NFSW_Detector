@@ -73,17 +73,18 @@ class AlertGenerator:
 
     def generate(self, detection_result) -> AlertReport:
         start = time.time()
-        anomaly_score = float(detection_result.get("anomaly_score", 0.0))
+        dr = self._normalize_input(detection_result)
+        anomaly_score = float(dr.get("anomaly_score", 0.0))
         alert_level = self._determine_level(anomaly_score)
-        harmful_contents = self._extract_harmful_contents(detection_result)
-        summary = self._generate_summary(detection_result)
+        harmful_contents = self._extract_harmful_contents(dr)
+        summary = self._generate_summary(dr)
         action_suggestion = ACTION_TEMPLATES.get(alert_level, "")
         processing_time = time.time() - start
 
         report = AlertReport(
             report_id=str(uuid.uuid4()),
-            video_id=detection_result.get("video_id", ""),
-            video_path=detection_result.get("video_path", ""),
+            video_id=dr.get("video_id", ""),
+            video_path=dr.get("video_path", ""),
             scan_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             alert_level=alert_level,
             anomaly_score=anomaly_score,
@@ -93,6 +94,26 @@ class AlertGenerator:
             processing_time=processing_time,
         )
         return report
+
+    def _normalize_input(self, detection_result) -> dict:
+        """将 dataclass 或 dict 输入统一转换为字典格式"""
+        if isinstance(detection_result, dict):
+            return detection_result
+        dr = asdict(detection_result)
+        # 适配字段名：DetectionResult.predicted_categories -> categories
+        dr["categories"] = dr.get("predicted_categories", [])
+        # 从 harmful_segments 提取 time_segments 字符串
+        if dr.get("harmful_segments"):
+            dr["time_segments"] = "; ".join(
+                f"{seg['start_time']:.1f}-{seg['end_time']:.1f}s"
+                for seg in dr["harmful_segments"]
+            )
+        else:
+            dr["time_segments"] = ""
+        # keyframe_paths (list) -> keyframe_path (string, 取第一个)
+        kp_list = dr.get("keyframe_paths", [])
+        dr["keyframe_path"] = kp_list[0] if kp_list else ""
+        return dr
 
     def generate_batch(self, detection_results) -> List[AlertReport]:
         return [self.generate(result) for result in detection_results]

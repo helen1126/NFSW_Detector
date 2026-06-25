@@ -64,6 +64,9 @@ NFSW_Detector/
 │   ├── quickstart.sh / quickstart.ps1
 │   ├── generate_splits.py           随机划分生成
 │   └── generate_reference_splits.py 参考划分生成（推荐）
+├── docs/                     项目文档
+│   ├── API.md                前端对接 API 文档
+│   └── ARCHITECTURE.md       模块结构与数据流
 ├── main.py                   CLI 入口
 ├── setup.py                  安装配置
 ├── environment.yml           Conda 环境配置
@@ -82,7 +85,7 @@ NFSW_Detector/
 
 ```bash
 conda env create -f environment.yml
-conda activate nfs_detector
+conda activate nfsw_detector
 ```
 
 **Windows 用户注意：** CLIP 包需要手动安装，详见 [INSTALL.md](INSTALL.md)。
@@ -231,7 +234,7 @@ import yaml
 from pipeline.inference import NSFWDetector
 from pipeline.alert import AlertGenerator
 
-with open("configs/default.yaml") as f:
+with open("configs/default.yaml", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 detector = NSFWDetector(config, checkpoint_path="checkpoints/best_model.pth")
@@ -244,8 +247,11 @@ alert_gen.export_json(report, "report.json")
 print(f"异常分数: {result.anomaly_score:.4f}")
 print(f"是否有害: {result.is_harmful}")
 print(f"预测类别: {result.predicted_categories}")
+print(f"类别分数: {result.category_scores}")
 print(f"有害时间段: {len(result.harmful_segments)} 段")
 ```
+
+> 完整字段定义、JSON 报告结构与前端对接说明见 [docs/API.md](docs/API.md)。
 
 ## 模型架构
 
