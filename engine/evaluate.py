@@ -7,13 +7,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.metrics import (
-    roc_auc_score,
-    average_precision_score,
     precision_recall_curve,
     roc_curve,
 )
 
 from utils.tools import get_prompt_text, get_batch_mask
+from utils.metrics import compute_video_level_auc, compute_video_level_ap
 
 
 class Evaluator:
@@ -91,19 +90,19 @@ class Evaluator:
             final_scores_2 = np.pad(final_scores_2, (0, gt_len - len(final_scores_2)), "constant")
 
         try:
-            auc1 = roc_auc_score(gt, final_scores_1)
+            auc1 = compute_video_level_auc(final_scores_1, gt)
         except ValueError:
             auc1 = 0.0
         try:
-            ap1 = average_precision_score(gt, final_scores_1)
+            ap1 = compute_video_level_ap(final_scores_1, gt)
         except ValueError:
             ap1 = 0.0
         try:
-            auc2 = roc_auc_score(gt, final_scores_2)
+            auc2 = compute_video_level_auc(final_scores_2, gt)
         except ValueError:
             auc2 = 0.0
         try:
-            ap2 = average_precision_score(gt, final_scores_2)
+            ap2 = compute_video_level_ap(final_scores_2, gt)
         except ValueError:
             ap2 = 0.0
 
