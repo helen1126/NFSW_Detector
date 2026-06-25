@@ -47,12 +47,15 @@ class DistanceAdj(Module):
     def __init__(self):
         super().__init__()
         self.sigma = Parameter(FloatTensor(1))
-        nn.init.constant_(self.sigma, 0.1)
+        nn.init.constant_(self.sigma, 1.0)
 
     def forward(self, batch_size, max_seqlen):
-        idx = np.arange(max_seqlen)
-        dist = squareform(pdist(idx.reshape(-1, 1), 'cityblock'))
-        dist = torch.from_numpy(dist).float().to(self.sigma.device)
-        adj = torch.exp(-dist / torch.exp(torch.tensor(1.)))
+        if not hasattr(self, "_dist_cache") or self._dist_cache.shape[0] < max_seqlen:
+            idx = np.arange(max_seqlen)
+            dist = squareform(pdist(idx.reshape(-1, 1), 'cityblock'))
+            dist = torch.from_numpy(dist).float()
+            self._dist_cache = dist
+        dist = self._dist_cache[:max_seqlen, :max_seqlen].to(self.sigma.device)
+        adj = torch.exp(-dist / torch.exp(self.sigma))
         adj = adj.unsqueeze(0).repeat(batch_size, 1, 1)
         return adj
