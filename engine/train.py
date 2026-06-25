@@ -46,7 +46,10 @@ def CLAS2_dasmil_weighted(
     shot_pi_list,
     device,
     base_div: int = 16,
-    k_min: int = 1
+    k_min: int = 1,
+    focal: bool = False,
+    focal_alpha: float = 0.25,
+    focal_gamma: float = 2.0,
 ):
     B, T, _ = logits.shape
     labels_bin = 1 - labels[:, 0].reshape(labels.shape[0]).to(device)
@@ -93,7 +96,13 @@ def CLAS2_dasmil_weighted(
         instance_logits.append(val.unsqueeze(0))
 
     instance_logits = torch.cat(instance_logits, dim=0)
-    clsloss = F.binary_cross_entropy(instance_logits, labels_bin)
+    if focal:
+        bce = F.binary_cross_entropy(instance_logits, labels_bin, reduction='none')
+        pt = torch.exp(-bce)
+        focal_weight = focal_alpha * (1 - pt) ** focal_gamma
+        clsloss = (focal_weight * bce).mean()
+    else:
+        clsloss = F.binary_cross_entropy(instance_logits, labels_bin)
     return clsloss
 
 
@@ -214,6 +223,10 @@ class Trainer:
         self.pi_topk_base_div = int(train_cfg.get("pi_topk_base_div", 16))
         self.pi_topk_k_min = int(train_cfg.get("pi_topk_k_min", 1))
         self.log_interval = int(train_cfg.get("log_interval", 10))
+        self.class_loss_alpha = float(train_cfg.get("class_loss_alpha", 1.0))
+        self.focal = bool(train_cfg.get("focal", False))
+        self.focal_alpha = float(train_cfg.get("focal_alpha", 0.25))
+        self.focal_gamma = float(train_cfg.get("focal_gamma", 2.0))
 
     def _setup_optimizer(self):
         train_cfg = self.config["training"]
@@ -315,6 +328,7 @@ class Trainer:
         loss1 = CLAS2_dasmil_weighted(
             logits1, text_labels, lengths, shot_slices, shot_pi_list,
             device=self.device, base_div=self.pi_topk_base_div, k_min=self.pi_topk_k_min,
+            focal=self.focal, focal_alpha=self.focal_alpha, focal_gamma=self.focal_gamma,
         )
         loss2 = CLASM_dasmil_weighted(
             logits2, text_labels, lengths, shot_slices, shot_pi_list,
@@ -322,7 +336,7 @@ class Trainer:
         )
         loss3 = text_feature_regularizer(text_features, weight=self.txtreg_weight)
 
-        loss = loss1 + loss2 + loss3
+        loss = loss1 + self.class_loss_alpha * loss2 + loss3
         return loss, loss1, loss2, loss3
 
     def validate(self, test_loader, gt):

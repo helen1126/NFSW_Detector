@@ -4,7 +4,7 @@ model:
   embed_dim: 512
   visual_width: 512
   visual_length: 256
-  visual_head: 1
+  visual_head: 4
   visual_layers: 2
   attn_window: 8
   prompt_prefix: 10
@@ -45,21 +45,24 @@ training:
   batch_size: 32
   lr: 0.00002
   weight_decay: 0.01
-  epochs: 10
+  epochs: 20
   scheduler: multistep
   warmup_epochs: 0
   loss: bce
   class_loss_alpha: 1.0
+  focal: true
+  focal_alpha: 0.25
+  focal_gamma: 2.0
   checkpoint_dir: checkpoints
   log_interval: 10
   early_stop_patience: 10
   pi_lr_mult: 5.0
-  txtreg_weight: 0.1
+  txtreg_weight: 0.3
   pi_topk_base_div: 16
   pi_topk_k_min: 1
   scheduler_milestones:
-    - 4
-    - 8
+    - 10
+    - 16
   scheduler_rate: 0.1
 
 cuda:

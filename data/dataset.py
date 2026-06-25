@@ -24,7 +24,7 @@ class SVADataset(Dataset):
     def __getitem__(self, index):
         clip_feature = np.load(self.df.loc[index]["path"])
         if not self.test_mode:
-            clip_feature, clip_length = process_feat(clip_feature, self.num_segments)
+            clip_feature, clip_length = process_feat(clip_feature, self.num_segments, is_random=True)
         else:
             clip_feature, clip_length = process_split(clip_feature, self.num_segments)
         clip_feature = torch.tensor(clip_feature, dtype=torch.float32)

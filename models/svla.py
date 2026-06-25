@@ -338,8 +338,8 @@ class SVLA(nn.Module):
             beta_fuse=cfa_beta
         )
 
-        self.lambda_v = nn.Parameter(torch.tensor(0.5))
-        self.lambda_t = nn.Parameter(torch.tensor(0.5))
+        self.lambda_v = nn.Parameter(torch.tensor(0.0))
+        self.lambda_t = nn.Parameter(torch.tensor(0.0))
 
         self._dbg_adj_nz_ratio = None
         self._dbg_pi_mean = None
