@@ -35,3 +35,5 @@ Thumbs.db
 
 # CLIP vocab (large, can be regenerated)
 clip/bpe_simple_vocab_16e6.txt
+
+.vscode/

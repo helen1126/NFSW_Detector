@@ -64,7 +64,7 @@ training:
 
 cuda:
   device: cuda:0
-  num_workers: 4
+  num_workers: 2
   pin_memory: true
   cudnn_benchmark: true
   deterministic: false

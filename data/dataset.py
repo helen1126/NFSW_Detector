@@ -70,9 +70,22 @@ def create_dataloaders(config):
         "pin_memory": pin_memory,
         "drop_last": True,
     }
+    if num_workers > 0:
+        train_loader_kwargs["persistent_workers"] = True
+        train_loader_kwargs["prefetch_factor"] = 2
 
     normal_loader = DataLoader(normal_dataset, shuffle=True, **train_loader_kwargs)
     anomaly_loader = DataLoader(anomaly_dataset, shuffle=True, **train_loader_kwargs)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
+
+    test_kwargs = {
+        "batch_size": 1,
+        "shuffle": False,
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+    }
+    if num_workers > 0:
+        test_kwargs["persistent_workers"] = True
+        test_kwargs["prefetch_factor"] = 2
+    test_loader = DataLoader(test_dataset, **test_kwargs)
 
     return normal_loader, anomaly_loader, test_loader
