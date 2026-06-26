@@ -15,22 +15,24 @@ def get_batch_label(texts, prompt_text, label_map: dict):
                 label_vector = label_vector.unsqueeze(0)
                 label_vectors = torch.cat([label_vectors, label_vector], dim=0)
         else:
+            keys = list(label_map.keys())
             for text in texts:
                 label_vector = torch.zeros(len(prompt_text))
                 if text in label_map:
-                    label_text = label_map[text]
-                    label_vector[prompt_text.index(label_text)] = 1
+                    idx = keys.index(text)
+                    label_vector[idx] = 1
 
                 label_vector = label_vector.unsqueeze(0)
                 label_vectors = torch.cat([label_vectors, label_vector], dim=0)
     else:
+        keys = list(label_map.keys())
         for text in texts:
             label_vector = torch.zeros(len(prompt_text))
             labels = text.split('-')
             for label in labels:
                 if label in label_map:
-                    label_text = label_map[label]
-                    label_vector[prompt_text.index(label_text)] = 1
+                    idx = keys.index(label)
+                    label_vector[idx] = 1
 
             label_vector = label_vector.unsqueeze(0)
             label_vectors = torch.cat([label_vectors, label_vector], dim=0)
@@ -38,10 +40,14 @@ def get_batch_label(texts, prompt_text, label_map: dict):
     return label_vectors
 
 
-def get_prompt_text(label_map: dict):
+def get_prompt_text(label_map: dict, text_prompts: dict = None):
     prompt_text = []
-    for v in label_map.values():
-        prompt_text.append(v)
+    for key, value in label_map.items():
+        if text_prompts and key in text_prompts and text_prompts[key]:
+            # Use the first descriptive phrase for richer CLIP encoding
+            prompt_text.append(text_prompts[key][0])
+        else:
+            prompt_text.append(value)
 
     return prompt_text
 

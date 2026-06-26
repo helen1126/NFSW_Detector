@@ -29,7 +29,7 @@ class Evaluator:
 
     def evaluate(self, test_loader, gt):
         self.model.eval()
-        prompt_text = get_prompt_text(self.label_map)
+        prompt_text = get_prompt_text(self.label_map, self.config.get('text_prompts', {}))
         repeat_factor = 16
         ap1_list, ap2_list = [], []
 

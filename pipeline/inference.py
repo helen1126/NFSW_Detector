@@ -108,7 +108,7 @@ class NSFWDetector:
             B, S, D = features_tensor.shape
             lengths = torch.tensor([valid_length], dtype=torch.long)
             padding_mask = torch.arange(S, device=self.device).unsqueeze(0) >= lengths.unsqueeze(1).to(self.device)
-            text_list = get_prompt_text(self.config.get('label_map', {}))
+            text_list = get_prompt_text(self.config.get('label_map', {}), self.config.get('text_prompts', {}))
             text_features, logits1, logits2, shot_slices, attn_weights = self.model(
                 features_tensor, padding_mask, text_list, lengths
             )
@@ -120,26 +120,25 @@ class NSFWDetector:
                 class_scores_raw = np.zeros((1, len(LABEL_MAP) + 1))
             attention_weights = np.zeros(S)
 
-        anomaly_score = float(np.max(segment_scores.reshape(-1)))
+        # 仅在有效帧范围内计算异常分数，过滤 padding 帧干扰
+        valid_scores = segment_scores.reshape(-1)[:valid_length]
+        if valid_length > 0:
+            anomaly_score = float(np.max(valid_scores))
+        else:
+            anomaly_score = 0.0
 
         is_harmful = anomaly_score >= self.threshold
 
-        harmful_segments = self._locate_harmful_segments(
-            segment_scores, timestamps, self.threshold, fps
-        )
-
-        keyframe_paths = self._extract_keyframes(
-            video_path, harmful_segments, segment_scores, timestamps
-        )
-
+        # category_scores 必须先于 harmful_segments 计算（后者需用 top 类别）
         # category_scores = 异常分数 × 条件概率
         # 条件概率 P(cat_i | anomaly) = softmax(logits2)[i] / (1 - softmax(logits2)[0])
         # 最终置信度 = anomaly_score × P(cat_i | anomaly)
         category_scores = {}
-        if logits2 is not None and class_scores_raw.shape[0] > 0:
-            # 取异常分数最高的帧的类别分布（而非所有帧的最大值）
-            anomaly_frame_idx = int(np.argmax(segment_scores.reshape(-1)))
-            frame_probs = class_scores_raw[anomaly_frame_idx]  # [num_text]
+        if logits2 is not None and class_scores_raw.shape[0] > 0 and valid_length > 0:
+            # 取异常分数最高的 top-k 帧的类别分布平均（而非单帧 argmax），降低噪声
+            k = min(3, valid_length)
+            topk_indices = np.argsort(valid_scores)[-k:]
+            frame_probs = class_scores_raw[topk_indices].mean(axis=0)  # [num_text]
             normal_prob = float(frame_probs[0])
             anomaly_prob = 1.0 - normal_prob
 
@@ -161,6 +160,14 @@ class NSFWDetector:
                 cat_key = text_list[idx]
                 cat_en = cat_key.capitalize()
                 category_scores[cat_en] = 0.0
+
+        harmful_segments = self._locate_harmful_segments(
+            segment_scores, timestamps, self.threshold, fps, category_scores
+        )
+
+        keyframe_paths = self._extract_keyframes(
+            video_path, harmful_segments, segment_scores, timestamps
+        )
 
         predicted_categories = [
             cat for cat, score in sorted(category_scores.items(), key=lambda x: x[1], reverse=True)
@@ -186,7 +193,7 @@ class NSFWDetector:
             detection_time=detection_time,
         )
 
-    def _locate_harmful_segments(self, segment_scores, timestamps, threshold, fps):
+    def _locate_harmful_segments(self, segment_scores, timestamps, threshold, fps, category_scores=None):
         if segment_scores.ndim > 1:
             scores_1d = segment_scores.max(axis=-1)
         else:
@@ -231,13 +238,12 @@ class NSFWDetector:
             end_time = timestamps[end_idx][1]
             peak_score = float(scores_1d[peak_idx])
 
-            if segment_scores.ndim > 1:
-                class_preds = segment_scores[peak_idx]
-                primary_cat_idx = int(np.argmax(class_preds))
+            # 修复 LABEL_MAP 索引错位：segment_scores 是 1D 无法取类别，
+            # 改为从 category_scores 取 top 类（与 category_scores 计算保持一致）
+            if category_scores:
+                category_en = max(category_scores.items(), key=lambda x: x[1])[0]
             else:
-                primary_cat_idx = 0
-
-            category_en = LABEL_MAP.get(primary_cat_idx, {}).get('en', 'unknown')
+                category_en = 'unknown'
             category = EN_TO_ZH.get(category_en, category_en)
 
             harmful_segments.append(HarmfulSegment(

@@ -180,7 +180,7 @@ class CFATextAdapter(nn.Module):
 
         Tproj = F.normalize(K_base, dim=-1, eps=1e-6)
         fused_n = F.normalize(F_fused, dim=-1, eps=1e-6)
-        logit_scale = self.logit_scale.clamp(max=math.log(100.0)).exp()
+        logit_scale = self.logit_scale.clamp(max=math.log(20.0)).exp()
         logits2_vis = torch.matmul(fused_n, Tproj.t()) * logit_scale
 
         return logits2_vis, F_fused
@@ -583,7 +583,7 @@ class SVLA(nn.Module):
         T_norm = F.normalize(T_f, dim=-1, eps=1e-6)
         T_norm = T_norm.permute(0, 2, 1)
 
-        logit_scale = self.cfa_text.logit_scale.clamp(max=math.log(100.0)).exp()
+        logit_scale = self.cfa_text.logit_scale.clamp(max=math.log(20.0)).exp()
         logits2 = torch.matmul(V_norm, T_norm) * logit_scale
 
         feat_bin = visual_features + self.mlp2(visual_features)

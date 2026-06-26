@@ -114,7 +114,10 @@ def CLASM_dasmil_weighted(
     shot_pi_list,
     device,
     base_div: int = 16,
-    k_min: int = 1
+    k_min: int = 1,
+    focal: bool = False,
+    focal_alpha: float = 0.25,
+    focal_gamma: float = 2.0,
 ):
     B, T, C = logits.shape
     labels = labels / torch.sum(labels, dim=1, keepdim=True)
@@ -166,10 +169,18 @@ def CLASM_dasmil_weighted(
         instance_logits.append(vid_vec.unsqueeze(0))
 
     instance_logits = torch.cat(instance_logits, dim=0)
-    milloss = -torch.mean(
-        torch.sum(labels * F.log_softmax(instance_logits, dim=1), dim=1),
-        dim=0,
-    )
+    if focal:
+        log_probs = F.log_softmax(instance_logits, dim=1)
+        probs = torch.exp(log_probs)
+        pt = (labels * probs).sum(dim=1)
+        focal_weight = focal_alpha * (1 - pt) ** focal_gamma
+        per_sample_loss = -focal_weight * torch.sum(labels * log_probs, dim=1)
+        milloss = per_sample_loss.mean()
+    else:
+        milloss = -torch.mean(
+            torch.sum(labels * F.log_softmax(instance_logits, dim=1), dim=1),
+            dim=0,
+        )
     return milloss
 
 
@@ -184,8 +195,14 @@ def text_feature_regularizer(text_features: torch.Tensor,
     tf = tf / (tf.norm(dim=-1, keepdim=True) + eps)
     normal = tf[0]
     others = tf[1:]
-    cos = torch.matmul(others, normal)
-    loss = torch.abs(cos).mean() * weight
+    # 原有项：惩罚异常类与 normal 的余弦相似度
+    cos_normal = torch.matmul(others, normal)
+    loss_normal = torch.abs(cos_normal).mean()
+    # 新增项：惩罚异常类之间的余弦相似度，防止方向坍缩
+    cos_others = torch.matmul(others, others.t())  # [num_anomaly, num_anomaly]
+    mask = ~torch.eye(others.size(0), dtype=torch.bool, device=others.device)
+    loss_others = torch.abs(cos_others[mask]).mean()
+    loss = (loss_normal + loss_others) * weight
     return loss
 
 
@@ -317,7 +334,7 @@ class Trainer:
         text_labels_raw = list(normal_labels) + list(anomaly_labels)
         lengths = torch.cat([normal_lengths, anomaly_lengths], dim=0).to(self.device)
 
-        text_list = get_prompt_text(self.label_map)
+        text_list = get_prompt_text(self.label_map, self.config.get('text_prompts', {}))
         text_labels = get_batch_label(text_labels_raw, text_list, self.label_map).to(self.device)
 
         text_features, logits1, logits2, shot_slices, _ = self.model(
@@ -333,6 +350,7 @@ class Trainer:
         loss2 = CLASM_dasmil_weighted(
             logits2, text_labels, lengths, shot_slices, shot_pi_list,
             device=self.device, base_div=self.pi_topk_base_div, k_min=self.pi_topk_k_min,
+            focal=self.focal, focal_alpha=self.focal_alpha, focal_gamma=self.focal_gamma,
         )
         loss3 = text_feature_regularizer(text_features, weight=self.txtreg_weight)
 
@@ -341,7 +359,7 @@ class Trainer:
 
     def validate(self, test_loader, gt):
         self.model.eval()
-        prompt_text = get_prompt_text(self.label_map)
+        prompt_text = get_prompt_text(self.label_map, self.config.get('text_prompts', {}))
         repeat_factor = 16
         ap1_list, ap2_list = [], []
 
