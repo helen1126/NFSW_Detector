@@ -50,6 +50,9 @@ NFSW_Detector/
 ├── demo/                     Demo 系统
 │   ├── app.py                Gradio 主入口
 │   └── visualize.py          Plotly 可视化工具
+├── api/                      FastAPI RESTful API 服务
+│   ├── app.py                FastAPI 应用与路由
+│   └── schemas.py            Pydantic 请求/响应模型
 ├── utils/                    工具函数
 │   ├── tools.py              SVLA 工具 (get_prompt_text, process_feat 等)
 │   ├── video.py              视频解码/格式转换
@@ -204,6 +207,9 @@ python main.py detect --config configs/default.yaml --checkpoint checkpoints/bes
 
 # 启动 Gradio Demo
 python main.py demo --config configs/default.yaml [--checkpoint checkpoints/best_model.pth] [--port 7860] [--share]
+
+# 启动 RESTful API 服务（Swagger 文档: http://localhost:8000/docs）
+python main.py serve --config configs/default.yaml [--checkpoint checkpoints/best_model.pth] [--host 0.0.0.0] [--port 8000]
 
 # 模型导出
 python main.py export --checkpoint checkpoints/best_model.pth --format onnx [--output exports/model]

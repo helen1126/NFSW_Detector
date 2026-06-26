@@ -74,6 +74,13 @@ if __name__ == "__main__":
     export_parser.add_argument("--output", default="exports/model")
     export_parser.add_argument("--config", default="configs/default.yaml")
 
+    serve_parser = subparsers.add_parser("serve", help="Launch FastAPI RESTful API server")
+    serve_parser.add_argument("--config", default="configs/default.yaml")
+    serve_parser.add_argument("--checkpoint", default=None, help="模型权重路径，不传则 API 以无模型模式启动")
+    serve_parser.add_argument("--host", default="0.0.0.0")
+    serve_parser.add_argument("--port", type=int, default=8000)
+    serve_parser.add_argument("--reload", action="store_true", help="开发模式热重载")
+
     args = parser.parse_args()
 
     if args.command == "train":
@@ -201,6 +208,22 @@ if __name__ == "__main__":
             scripted = torch.jit.trace(model, dummy_input)
             scripted.save(ts_path)
             print(f"Model exported to TorchScript: {ts_path}")
+
+    elif args.command == "serve":
+        print(BANNER)
+        from api.app import init_state
+        import uvicorn
+        init_state(args.config, args.checkpoint)
+        loaded = "已加载" if args.checkpoint else "未加载（无模型模式，仅元数据接口可用）"
+        print(f"FastAPI 服务启动中... 模型: {loaded}")
+        print(f"Swagger UI:  http://{args.host}:{args.port}/docs")
+        print(f"ReDoc:        http://{args.host}:{args.port}/redoc")
+        uvicorn.run(
+            "api.app:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+        )
 
     else:
         parser.print_help()

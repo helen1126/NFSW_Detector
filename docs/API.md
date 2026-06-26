@@ -29,14 +29,15 @@
 [export_json / export_html]  持久化为 JSON/HTML
 ```
 
-前端两种典型对接方式：
+前端三种典型对接方式：
 
 | 方式 | 适用场景 | 入口 |
 |------|----------|------|
+| **RESTful API（推荐）** | 生产/正式前端对接 | `python main.py serve --checkpoint ...` 后访问 `http://localhost:8000/docs` |
 | **Gradio Web UI** | 演示/内部审核后台 | `python main.py demo --checkpoint ...` 后访问 `http://localhost:7860` |
-| **Python API + 自建后端** | 接入自有前端/服务 | `from pipeline.inference import NSFWDetector` |
+| **Python API + 自建后端** | 离线/脚本批处理 | `from pipeline.inference import NSFWDetector` |
 
-> 当前未提供独立 HTTP REST 后端，前端默认通过 Gradio 提供的 API 端点调用。
+> RESTful API 基于 FastAPI 实现，提供完整的 OpenAPI 文档（Swagger UI / ReDoc）、请求校验与错误处理，是前端对接的推荐方式。详见 [§3 RESTful API](#3-restful-api)。
 
 ---
 
@@ -51,6 +52,7 @@
 | `detect` | 单视频检测并生成报告 | `--config`, `--checkpoint`, `--video`, `--threshold`, `--output`, `--save-frames` |
 | `demo` | 启动 Gradio Demo 服务 | `--config`, `--checkpoint`, `--port`, `--share` |
 | `export` | 导出 ONNX/TorchScript | `--checkpoint`, `--format onnx\|torchscript`, `--output` |
+| `serve` | 启动 FastAPI RESTful API 服务 | `--config`, `--checkpoint`, `--host`, `--port`, `--reload` |
 
 示例：
 
@@ -63,21 +65,182 @@ python main.py detect --config configs/default.yaml \
 
 # 启动 Demo（默认端口 7860）
 python main.py demo --checkpoint checkpoints/best_model.pth --port 7860
+
+# 启动 RESTful API（默认端口 8000）
+python main.py serve --checkpoint checkpoints/best_model.pth --port 8000
 ```
 
 ---
 
-## 3. Gradio API 调用
+## 3. RESTful API
+
+基于 FastAPI 实现的 RESTful API，是前端对接的**推荐方式**。提供完整的 OpenAPI 文档、请求校验、CORS 支持与错误处理。
+
+### 3.1 启动服务
+
+```bash
+python main.py serve --checkpoint checkpoints/best_model.pth --host 0.0.0.0 --port 8000
+```
+
+启动后访问：
+- **Swagger UI**（交互式文档）：`http://localhost:8000/docs`
+- **ReDoc**（只读文档）：`http://localhost:8000/redoc`
+- **OpenAPI JSON**：`http://localhost:8000/openapi.json`
+
+也可用 uvicorn 直接启动（开发热重载）：
+```bash
+uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+> 不传 `--checkpoint` 时 API 以"无模型模式"启动，仅元数据接口（health/categories）可用，detect 返回 503。
+
+### 3.2 端点总览
+
+| 方法 | 路径 | 说明 | 请求体 | 响应 |
+|------|------|------|--------|------|
+| GET | `/` | API 根信息 | - | JSON |
+| GET | `/api/v1/health` | 健康检查 | - | `HealthResponseSchema` |
+| GET | `/api/v1/categories` | 类别与预警等级 | - | `CategoriesResponseSchema` |
+| POST | `/api/v1/detect` | 上传视频检测 | `multipart/form-data` | `DetectResponseSchema` |
+| GET | `/api/v1/reports/{report_id}` | 获取预警报告 | - | `AlertReportSchema` |
+| GET | `/api/v1/keyframes/{filename}` | 获取关键帧图片 | `?report_id=` | `image/jpeg` |
+
+### 3.3 POST /api/v1/detect — 视频检测
+
+**请求**：`multipart/form-data`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `file` | file | 是 | 视频文件（支持 mp4/avi/mov/mkv/wmv/flv/webm） |
+| `threshold` | float | 否 | 临时异常阈值 [0,1]，覆盖配置默认值 |
+
+**响应**：`DetectResponseSchema`（含 `detection` 与 `report` 两部分）
+
+```json
+{
+  "detection": {
+    "video_id": "test",
+    "duration": 15.42,
+    "is_harmful": true,
+    "anomaly_score": 0.8723,
+    "predicted_categories": ["Smoke", "Blood"],
+    "category_scores": {"Smoke": 0.71, "Blood": 0.12, "Violent": 0.05, "Abusive": 0.02, "Sexy": 0.01, "Money": 0.0, "Policy": 0.0},
+    "harmful_segments": [
+      {"start_time": 0.0, "end_time": 2.5, "score": 0.91, "category": "吸烟", "category_en": "Smoke"}
+    ],
+    "keyframe_urls": ["/api/v1/keyframes/keyframe_test_0.0_2.5.jpg?report_id=9f1c2a3b-..."]
+  },
+  "report": {
+    "report_id": "9f1c2a3b-4d5e-6789-abcd-ef0123456789",
+    "video_id": "test",
+    "video_path": "test.mp4",
+    "scan_time": "2026-06-25 21:10:00",
+    "alert_level": "HIGH",
+    "anomaly_score": 0.8723,
+    "harmful_contents": [
+      {
+        "category_en": "Smoke",
+        "category_zh": "吸烟",
+        "confidence": 0.71,
+        "time_segments": "0.0-2.5s",
+        "keyframe_url": "/api/v1/keyframes/keyframe_test_0.0_2.5.jpg?report_id=9f1c2a3b-...",
+        "description": "检测到疑似吸烟行为，可能违反平台内容规范"
+      }
+    ],
+    "summary": "检测到高风险内容，异常评分 0.87，涉及类别：吸烟",
+    "action_suggestion": "建议立即下架并转人工审核，等待进一步处理",
+    "processing_time": 0.0032
+  }
+}
+```
+
+**错误响应**：
+
+| 状态码 | 说明 |
+|--------|------|
+| 400 | 视频格式不支持 / 文件无效 |
+| 500 | 推理过程内部错误（如显存不足） |
+| 503 | 模型未加载 |
+
+### 3.4 GET /api/v1/reports/{report_id} — 获取报告
+
+报告在 `POST /detect` 时生成并持久化到 `reports/api/{report_id}.json`。服务重启后仍可查询，但磁盘加载的报告 `keyframe_url` 为 `null`（关键帧映射在内存中，重启丢失）。
+
+### 3.5 GET /api/v1/keyframes/{filename}?report_id=xxx — 关键帧图片
+
+返回 `image/jpeg`。`filename` 与 `report_id` 均来自 `/detect` 或 `/reports` 响应。
+
+### 3.6 调用示例
+
+**curl**：
+```bash
+# 检测
+curl -X POST http://localhost:8000/api/v1/detect \
+  -F "file=@test.mp4" \
+  -F "threshold=0.5"
+
+# 获取报告
+curl http://localhost:8000/api/v1/reports/9f1c2a3b-4d5e-6789-abcd-ef0123456789
+
+# 获取关键帧
+curl "http://localhost:8000/api/v1/keyframes/keyframe_test_0.0_2.5.jpg?report_id=9f1c2a3b-..." --output kf.jpg
+```
+
+**Python（requests）**：
+```python
+import requests
+# 检测
+with open("test.mp4", "rb") as f:
+    resp = requests.post(
+        "http://localhost:8000/api/v1/detect",
+        files={"file": ("test.mp4", f, "video/mp4")},
+        data={"threshold": 0.5},
+    )
+data = resp.json()
+print(data["report"]["alert_level"], data["report"]["anomaly_score"])
+```
+
+**JavaScript（fetch）**：
+```javascript
+const formData = new FormData();
+formData.append("file", fileInput.files[0]);
+const resp = await fetch("http://localhost:8000/api/v1/detect", {
+  method: "POST",
+  body: formData,
+});
+const data = await resp.json();
+console.log(data.report.alert_level, data.report.anomaly_score);
+// 关键帧直接用 <img src={data.detection.keyframe_urls[0]}>
+```
+
+### 3.7 错误处理
+
+所有错误返回统一格式：
+```json
+{"error": "HTTPException", "detail": "不支持的视频格式: .txt，支持: ['.avi', '.flv', '.mkv', ...]"}
+```
+
+### 3.8 配置
+
+服务默认从 `configs/default.yaml` 读取配置。可通过环境变量覆盖：
+- `NSFW_CONFIG`：配置文件路径（默认 `configs/default.yaml`）
+- `NSFW_CHECKPOINT`：模型权重路径（用于 uvicorn 直接启动时）
+
+CORS 默认允许所有来源（`allow_origins=["*"]`），生产环境应在 `api/app.py` 中收紧。
+
+---
+
+## 4. Gradio API 调用
 
 启动 `python main.py demo` 后，Gradio 自动暴露 API 端点。前端可通过 HTTP 调用：
 
-### 3.1 端点信息
+### 4.1 端点信息
 
 - **Base URL**: `http://localhost:7860`
 - **API 文档**: `http://localhost:7860/?view=api`（Gradio 自带）
 - **主要函数**: `detect_video`
 
-### 3.2 请求示例（上传视频并触发检测）
+### 4.2 请求示例（上传视频并触发检测）
 
 ```bash
 # 1. 上传视频文件
@@ -96,7 +259,7 @@ curl -X POST http://localhost:7860/run/detect_video \
   }'
 ```
 
-### 3.3 响应结构
+### 4.3 响应结构
 
 `detect_video` 返回 6 个输出，顺序与 Gradio UI 组件绑定：
 
@@ -111,7 +274,7 @@ curl -X POST http://localhost:7860/run/detect_video \
 
 > Plotly Figure 为标准 Plotly JSON，前端可用 `plotly.js` 直接渲染。
 
-### 3.4 Python 客户端示例
+### 4.4 Python 客户端示例
 
 ```python
 from gradio_client import Client, handle_file
@@ -128,9 +291,9 @@ overview_md, anomaly_fig, timeline_md, keyframes, report_html, status = result
 
 ---
 
-## 4. Python API
+## 5. Python API
 
-### 4.1 NSFWDetector
+### 5.1 NSFWDetector
 
 ```python
 from pipeline.inference import NSFWDetector
@@ -151,7 +314,7 @@ results = detector.detect_batch(["a.mp4", ...]) # -> List[DetectionResult]
 - `ValueError`: 视频格式不在支持列表 `{mp4, avi, mov, mkv, wmv, flv, webm}` 内
 - `RuntimeError`: GPU OOM（自动回退到半 batch 重试，仍失败则抛出）
 
-### 4.2 AlertGenerator
+### 5.2 AlertGenerator
 
 ```python
 from pipeline.alert import AlertGenerator
@@ -174,7 +337,7 @@ alert_gen.export_csv(reports, "reports.csv")
 
 ---
 
-## 5. 数据结构：DetectionResult
+## 6. 数据结构：DetectionResult
 
 定义位置：`pipeline/inference.py`。前端展示检测原始数据时使用。
 
@@ -194,7 +357,7 @@ alert_gen.export_csv(reports, "reports.csv")
 | `processing_time` | float | 端到端处理耗时（秒） | `3.21` |
 | `detection_time` | string | 检测时间戳 `%Y-%m-%d %H:%M:%S` | `"2026-06-25 21:10:00"` |
 
-### 5.1 HarmfulSegment
+### 6.1 HarmfulSegment
 
 | 字段 | 类型 | 说明 | 示例 |
 |------|------|------|------|
@@ -204,7 +367,7 @@ alert_gen.export_csv(reports, "reports.csv")
 | `category` | string | 类别中文名 | `"吸烟"` |
 | `category_en` | string | 类别英文名 | `"Smoke"` |
 
-### 5.2 类别分数计算说明（前端展示提示）
+### 6.2 类别分数计算说明（前端展示提示）
 
 `category_scores` 不是简单的 softmax 概率，而是：
 
@@ -220,7 +383,7 @@ P(cat_i | anomaly) = softmax(logits2)[i] / (1 - softmax(logits2)[normal])
 
 ---
 
-## 6. 数据结构：AlertReport
+## 7. 数据结构：AlertReport
 
 定义位置：`pipeline/alert.py`。这是前端展示预警报告的标准结构，也是 `export_json` 的输出格式。
 
@@ -237,7 +400,7 @@ P(cat_i | anomaly) = softmax(logits2)[i] / (1 - softmax(logits2)[normal])
 | `action_suggestion` | string | 处置建议文本 | `"建议立即下架并转人工审核，等待进一步处理"` |
 | `processing_time` | float | 报告生成耗时（秒，不含检测） | `0.003` |
 
-### 6.1 HarmfulContentDetail
+### 7.1 HarmfulContentDetail
 
 | 字段 | 类型 | 说明 | 示例 |
 |------|------|------|------|
@@ -250,9 +413,9 @@ P(cat_i | anomaly) = softmax(logits2)[i] / (1 - softmax(logits2)[normal])
 
 ---
 
-## 7. 枚举常量
+## 8. 枚举常量
 
-### 7.1 有害内容类别
+### 8.1 有害内容类别
 
 来源：`models/classifier.py` 的 `LABEL_MAP` / `pipeline/alert.py` 的 `CATEGORY_DESCRIPTIONS`。
 
@@ -268,7 +431,7 @@ P(cat_i | anomaly) = softmax(logits2)[i] / (1 - softmax(logits2)[normal])
 
 > 推理时的 `text_list` 顺序为 `[normal, smoke, blood, violent, abusive, sexy, money, policy]`（来自 `configs/default.yaml` 的 `label_map.values()`），索引 0 是 `normal`，1-7 对应上表 7 类。前端展示应使用 `category_en`/`category_zh` 字段，不要依赖索引。
 
-### 7.2 预警等级
+### 8.2 预警等级
 
 来源：`pipeline/alert.py` 的 `ALERT_LEVELS` / `ACTION_TEMPLATES`。
 
@@ -283,7 +446,7 @@ P(cat_i | anomaly) = softmax(logits2)[i] / (1 - softmax(logits2)[normal])
 
 ---
 
-## 8. JSON 报告完整示例
+## 9. JSON 报告完整示例
 
 `alert_gen.export_json(report, "report.json")` 输出结构（已格式化示例）：
 
@@ -319,7 +482,7 @@ P(cat_i | anomaly) = softmax(logits2)[i] / (1 - softmax(logits2)[normal])
 }
 ```
 
-### 8.1 安全视频示例（无有害内容）
+### 9.1 安全视频示例（无有害内容）
 
 ```json
 {
@@ -338,14 +501,14 @@ P(cat_i | anomaly) = softmax(logits2)[i] / (1 - softmax(logits2)[normal])
 
 ---
 
-## 9. 前端对接建议
+## 10. 前端对接建议
 
-### 9.1 推荐组件结构
+### 10.1 推荐组件结构
 
 ```
 检测结果页
 ├── 顶部状态条
-│   ├── 等级徽章（color 由 alert_level 映射，见 §7.2）
+│   ├── 等级徽章（color 由 alert_level 映射，见 §8.2）
 │   ├── 异常分数（anomaly_score，保留 4 位小数）
 │   ├── 处置建议（action_suggestion）
 │   └── 处理耗时（processing_time）
@@ -360,19 +523,19 @@ P(cat_i | anomaly) = softmax(logits2)[i] / (1 - softmax(logits2)[normal])
 └── 报告下载（report_html / JSON 导出）
 ```
 
-### 9.2 字段渲染约定
+### 10.2 字段渲染约定
 
 | 字段 | 渲染建议 |
 |------|----------|
-| `anomaly_score` | 保留 4 位小数；可用仪表盘组件，刻度按 §7.2 着色 |
-| `alert_level` | 徽章组件，颜色见 §7.2 |
+| `anomaly_score` | 保留 4 位小数；可用仪表盘组件，刻度按 §8.2 着色 |
+| `alert_level` | 徽章组件，颜色见 §8.2 |
 | `category_scores` / `harmful_contents[].confidence` | 横向进度条，`>= 0.5` 标红 |
 | `time_segments` | 字符串 `"0.0-2.5s; 8.1-10.3s"`，按 `; ` 分割后逐段渲染 |
 | `keyframe_path` / `keyframe_paths` | 本地路径，前端需通过后端文件接口转换成 URL；`export_html` 已 base64 内联 |
 | `predicted_categories` | Tag/Chip 组件，按 `category_scores` 降序展示 |
 | `summary` / `action_suggestion` | 直接文本展示，`action_suggestion` 在 SAFE 等级下可能为空字符串 |
 
-### 9.3 Plotly 图表对接
+### 10.3 Plotly 图表对接
 
 `anomaly_plot` 是 Plotly Figure 对象的 JSON 序列化形式，前端：
 
@@ -383,7 +546,7 @@ Plotly.newPlot('anomaly-plot', anomaly_plot.data, anomaly_plot.layout);
 
 横轴为段索引（非真实时间），纵轴为 `[0,1]` 异常分数，红色虚线为 `threshold`。
 
-### 9.4 关键帧展示
+### 10.4 关键帧展示
 
 `DetectionResult.keyframe_paths` 为本地绝对路径。前端展示有两种方案：
 
@@ -394,7 +557,7 @@ Plotly.newPlot('anomaly-plot', anomaly_plot.data, anomaly_plot.layout);
 
 ---
 
-## 10. 错误处理与边界情况
+## 11. 错误处理与边界情况
 
 | 场景 | 行为 | 前端处理建议 |
 |------|------|--------------|
@@ -408,7 +571,7 @@ Plotly.newPlot('anomaly-plot', anomaly_plot.data, anomaly_plot.layout);
 
 ---
 
-## 11. 配置参考
+## 12. 配置参考
 
 `configs/default.yaml` 中与前端/对接相关的配置段：
 
@@ -429,8 +592,9 @@ demo:
 
 ---
 
-## 12. 变更日志
+## 13. 变更日志
 
 | 日期 | 变更 |
 |------|------|
 | 2026-06-25 | 初版：定义 DetectionResult/AlertReport 字段、Gradio API、JSON 报告示例、前端对接建议 |
+| 2026-06-26 | 新增 §3 RESTful API：FastAPI 实现、6 个端点、OpenAPI 文档、curl/Python/JS 调用示例、错误处理与配置说明；章节编号顺延 |

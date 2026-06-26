@@ -17,4 +17,7 @@ pytest-cov
 ftfy
 regex
 tqdm
+fastapi
+uvicorn[standard]
+python-multipart
 # CLIP 需要手动安装: pip install git+https://github.com/openai/CLIP.git --no-deps
