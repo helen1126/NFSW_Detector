@@ -1,0 +1,164 @@
+# ViT-L/14 高精度骨干配置
+# 用法: python main.py train --config configs/vitl14.yaml
+# 注意: 需重新训练，无法复用 ViT-B/16 的检查点
+
+model:
+  name: SVLA
+  clip_variant: ViT-L/14
+  embed_dim: 768
+  visual_width: 768
+  visual_length: 256
+  visual_head: 4
+  visual_layers: 2
+  attn_window: 8
+  prompt_prefix: 10
+  prompt_postfix: 10
+  hidden_dim: 256
+  num_classes: 7
+  num_classes_with_normal: 8
+  dropout: 0.3
+  shot_condition: true
+  shot_sim_thresh: 0.90
+  shot_min_len: 12
+  shot_layers: 1
+  shot_gamma: 0.05
+  pi_floor: 0.05
+  cfa_tau: 0.8
+  cfa_beta: 0.8
+  cfa_prefix_len: 32
+  cfa_bottleneck: 256
+  cfa_prefix_rank: 16
+  cfa_dropout: 0.1
+
+data:
+  dataset: SVA
+  feature_dir: data/features
+  train_csv: data/splits/train.csv
+  test_csv: data/splits/test.csv
+  gt_path: list/gt_Sva_500_abnormal_is_1.npy
+  num_segments: 10
+  frame_sample_rate: 1
+  supported_formats:
+    - mp4
+    - avi
+    - mov
+    - flv
+    - mkv
+
+training:
+  batch_size: 32
+  lr: 0.00002
+  weight_decay: 0.01
+  epochs: 20
+  scheduler: multistep
+  warmup_epochs: 0
+  loss: bce
+  class_loss_alpha: 1.0
+  focal: true
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+  checkpoint_dir: checkpoints
+  log_interval: 10
+  early_stop_patience: 10
+  pi_lr_mult: 5.0
+  txtreg_weight: 0.3
+  pi_topk_base_div: 16
+  pi_topk_k_min: 1
+  scheduler_milestones:
+    - 10
+    - 16
+  scheduler_rate: 0.1
+
+cuda:
+  device: cuda:0
+  num_workers: 2
+  pin_memory: true
+  cudnn_benchmark: true
+  deterministic: false
+  amp: false
+  tf32: true
+
+inference:
+  anomaly_threshold: 0.5
+  alert_levels:
+    high: 0.8
+    medium: 0.5
+    low: 0.3
+  max_duration: 300
+  device_priority: gpu
+  fallback_cpu: true
+
+demo:
+  port: 7860
+  share: false
+  max_file_size: 500
+  show_progress: true
+
+logging:
+  level: INFO
+  log_file: logs/nfsw_detector.log
+  tensorboard: true
+  tensorboard_dir: runs
+
+labels:
+  0:
+    en: Smoke
+    zh: 吸烟
+  1:
+    en: Blood
+    zh: 血腥
+  2:
+    en: Violent
+    zh: 暴力
+  3:
+    en: Abusive
+    zh: 辱骂
+  4:
+    en: Sexy
+    zh: 色情
+  5:
+    en: Money
+    zh: 金钱诈骗
+  6:
+    en: Policy
+    zh: 政治敏感
+
+label_map:
+  normal: normal
+  smoke: smoke
+  blood: blood
+  violent: violent
+  abusive: abusive
+  sexy: sexy
+  money: money
+  policy: policy
+
+text_prompts:
+  smoke:
+    - "a person smoking a cigarette"
+    - "someone holding and smoking tobacco"
+    - "smoke coming from a cigarette or pipe"
+  blood:
+    - "blood on the ground, bloody scene, gore"
+    - "a person bleeding from an injury"
+    - "graphic medical scene with blood"
+  violent:
+    - "people fighting and hitting each other"
+    - "physical altercation and violence"
+    - "riot or street fight scene"
+  abusive:
+    - "person making aggressive gestures"
+    - "verbal harassment and threatening behavior"
+    - "someone using abusive language or gestures"
+  sexy:
+    - "sexually suggestive content and exposure"
+    - "inappropriate revealing clothing or acts"
+    - "explicit adult content"
+  money:
+    - "displaying large amounts of cash suspiciously"
+    - "gambling or scam related content"
+    - "fraudulent money scheme promotion"
+  policy:
+    - "politically sensitive content and symbols"
+    - "unauthorized political commentary"
+    - "political slander or misinformation"

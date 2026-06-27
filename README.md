@@ -215,6 +215,22 @@ python main.py serve --config configs/default.yaml [--checkpoint checkpoints/bes
 python main.py export --checkpoint checkpoints/best_model.pth --format onnx [--output exports/model]
 ```
 
+### 骨干网络选择
+
+支持两种 CLIP 骨干网络，通过配置文件切换：
+
+| 配置文件 | 骨干 | 维度 | 说明 |
+|----------|------|------|------|
+| `configs/default.yaml` | ViT-B/16 | 512 | 默认，轻量快速 |
+| `configs/vitl14.yaml` | ViT-L/14 | 768 | 高精度，参数量约 2 倍 |
+
+```bash
+# 使用高精度骨干训练（需重新训练，检查点不兼容）
+python main.py train --config configs/vitl14.yaml
+```
+
+**注意：** 切换骨干网络后需重新训练，ViT-B/16 的检查点无法直接用于 ViT-L/14 配置。配置校验会在模型构造前检查 `clip_variant` 与 `embed_dim`/`visual_width` 的一致性。
+
 ### Shell 脚本
 
 **Linux/macOS:**
