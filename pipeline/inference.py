@@ -294,6 +294,8 @@ class NSFWDetector:
 
     def _load_model(self, checkpoint_path):
         mcfg = self.config.get('model', {})
+        from utils.tools import validate_clip_config
+        validate_clip_config(mcfg)
         device_str = str(self.device)
         model = SVLA(
             num_class=mcfg.get('num_classes_with_normal', 8),
@@ -317,6 +319,7 @@ class NSFWDetector:
             cfa_bottleneck=mcfg.get('cfa_bottleneck', 256),
             cfa_prefix_rank=mcfg.get('cfa_prefix_rank', 16),
             cfa_dropout=mcfg.get('cfa_dropout', 0.1),
+            clip_variant=mcfg.get('clip_variant', 'ViT-B/16'),
         )
         state_dict = torch.load(checkpoint_path, map_location=self.device)
         if isinstance(state_dict, dict) and 'model_state_dict' in state_dict:

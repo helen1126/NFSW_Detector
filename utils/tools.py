@@ -123,3 +123,37 @@ def process_split(feat, length):
                                             axis=0)
 
         return split_feat, clip_length
+
+
+# CLIP 变体与输出维度的映射
+CLIP_VARIANT_DIMS = {
+    "RN50": 1024,
+    "RN101": 512,
+    "RN50x4": 640,
+    "ViT-B/32": 512,
+    "ViT-B/16": 512,
+    "ViT-L/14": 768,
+    "ViT-L/14@336px": 768,
+}
+
+
+def validate_clip_config(model_cfg: dict):
+    """校验 clip_variant 与 embed_dim/visual_width 的一致性。
+
+    若不一致，抛出 ValueError 并给出修复建议。
+    """
+    variant = model_cfg.get("clip_variant", "ViT-B/16")
+    embed_dim = model_cfg.get("embed_dim", 512)
+    visual_width = model_cfg.get("visual_width", 512)
+    expected = CLIP_VARIANT_DIMS.get(variant)
+    if expected is None:
+        raise ValueError(
+            f"未知的 clip_variant: {variant}。"
+            f"支持的变体: {list(CLIP_VARIANT_DIMS.keys())}"
+        )
+    if embed_dim != expected or visual_width != expected:
+        raise ValueError(
+            f"配置不一致: clip_variant={variant} 期望 embed_dim=visual_width={expected}, "
+            f"但配置为 embed_dim={embed_dim}, visual_width={visual_width}。"
+            f"请同步修改 embed_dim 和 visual_width 为 {expected}。"
+        )

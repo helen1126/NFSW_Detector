@@ -12,6 +12,7 @@ from pipeline.inference import NSFWDetector
 from pipeline.alert import AlertGenerator
 from data.dataset import create_dataloaders
 from utils.logger import setup_logger
+from utils.tools import validate_clip_config
 
 BANNER = """
 ╔══════════════════════════════════════════════════════════════╗
@@ -98,6 +99,7 @@ if __name__ == "__main__":
             print(f"Warning: CUDA not available, falling back to CPU")
             device = "cpu"
         mcfg = config["model"]
+        validate_clip_config(mcfg)
         model = SVLA(
             num_class=mcfg["num_classes_with_normal"], embed_dim=mcfg["embed_dim"],
             visual_length=mcfg["visual_length"], visual_width=mcfg["visual_width"],
@@ -109,6 +111,7 @@ if __name__ == "__main__":
             pi_floor=mcfg["pi_floor"], cfa_tau=mcfg["cfa_tau"], cfa_beta=mcfg["cfa_beta"],
             cfa_prefix_len=mcfg["cfa_prefix_len"], cfa_bottleneck=mcfg["cfa_bottleneck"],
             cfa_prefix_rank=mcfg["cfa_prefix_rank"], cfa_dropout=mcfg["cfa_dropout"],
+            clip_variant=mcfg.get("clip_variant", "ViT-B/16"),
         )
         normal_loader, anomaly_loader, test_loader = create_dataloaders(config)
         label_map = config.get("label_map", {})
@@ -130,6 +133,7 @@ if __name__ == "__main__":
             print(f"Warning: CUDA not available, falling back to CPU")
             device = "cpu"
         mcfg = config["model"]
+        validate_clip_config(mcfg)
         model = SVLA(
             num_class=mcfg["num_classes_with_normal"], embed_dim=mcfg["embed_dim"],
             visual_length=mcfg["visual_length"], visual_width=mcfg["visual_width"],
@@ -141,6 +145,7 @@ if __name__ == "__main__":
             pi_floor=mcfg["pi_floor"], cfa_tau=mcfg["cfa_tau"], cfa_beta=mcfg["cfa_beta"],
             cfa_prefix_len=mcfg["cfa_prefix_len"], cfa_bottleneck=mcfg["cfa_bottleneck"],
             cfa_prefix_rank=mcfg["cfa_prefix_rank"], cfa_dropout=mcfg["cfa_dropout"],
+            clip_variant=mcfg.get("clip_variant", "ViT-B/16"),
         )
         checkpoint = torch.load(args.checkpoint, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -177,6 +182,7 @@ if __name__ == "__main__":
             print(f"Warning: CUDA not available, falling back to CPU")
             device = "cpu"
         mcfg = config["model"]
+        validate_clip_config(mcfg)
         model = SVLA(
             num_class=mcfg["num_classes_with_normal"], embed_dim=mcfg["embed_dim"],
             visual_length=mcfg["visual_length"], visual_width=mcfg["visual_width"],
@@ -188,6 +194,7 @@ if __name__ == "__main__":
             pi_floor=mcfg["pi_floor"], cfa_tau=mcfg["cfa_tau"], cfa_beta=mcfg["cfa_beta"],
             cfa_prefix_len=mcfg["cfa_prefix_len"], cfa_bottleneck=mcfg["cfa_bottleneck"],
             cfa_prefix_rank=mcfg["cfa_prefix_rank"], cfa_dropout=mcfg["cfa_dropout"],
+            clip_variant=mcfg.get("clip_variant", "ViT-B/16"),
         )
         checkpoint = torch.load(args.checkpoint, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])

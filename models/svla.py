@@ -259,7 +259,8 @@ class SVLA(nn.Module):
                  cfa_prefix_len: int = 64,
                  cfa_bottleneck: int = 256,
                  cfa_prefix_rank: int = 16,
-                 cfa_dropout: float = 0.1):
+                 cfa_dropout: float = 0.1,
+                 clip_variant: str = "ViT-B/16"):
         super().__init__()
 
         self.num_class = num_class
@@ -311,7 +312,7 @@ class SVLA(nn.Module):
         ]))
         self.classifier = nn.Linear(visual_width, 1)
 
-        self.clipmodel, _ = clip.load("ViT-B/16", device)
+        self.clipmodel, _ = clip.load(self.clip_variant, device)
         for p in self.clipmodel.parameters():
             p.requires_grad = False
 
