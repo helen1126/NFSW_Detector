@@ -112,6 +112,7 @@ if __name__ == "__main__":
             cfa_prefix_len=mcfg["cfa_prefix_len"], cfa_bottleneck=mcfg["cfa_bottleneck"],
             cfa_prefix_rank=mcfg["cfa_prefix_rank"], cfa_dropout=mcfg["cfa_dropout"],
             clip_variant=mcfg.get("clip_variant", "ViT-B/16"),
+            feature_dim=mcfg.get("feature_dim", None),
         )
         normal_loader, anomaly_loader, test_loader = create_dataloaders(config)
         label_map = config.get("label_map", {})
@@ -146,6 +147,7 @@ if __name__ == "__main__":
             cfa_prefix_len=mcfg["cfa_prefix_len"], cfa_bottleneck=mcfg["cfa_bottleneck"],
             cfa_prefix_rank=mcfg["cfa_prefix_rank"], cfa_dropout=mcfg["cfa_dropout"],
             clip_variant=mcfg.get("clip_variant", "ViT-B/16"),
+            feature_dim=mcfg.get("feature_dim", None),
         )
         checkpoint = torch.load(args.checkpoint, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -195,6 +197,7 @@ if __name__ == "__main__":
             cfa_prefix_len=mcfg["cfa_prefix_len"], cfa_bottleneck=mcfg["cfa_bottleneck"],
             cfa_prefix_rank=mcfg["cfa_prefix_rank"], cfa_dropout=mcfg["cfa_dropout"],
             clip_variant=mcfg.get("clip_variant", "ViT-B/16"),
+            feature_dim=mcfg.get("feature_dim", None),
         )
         checkpoint = torch.load(args.checkpoint, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])

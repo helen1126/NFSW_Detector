@@ -320,6 +320,7 @@ class NSFWDetector:
             cfa_prefix_rank=mcfg.get('cfa_prefix_rank', 16),
             cfa_dropout=mcfg.get('cfa_dropout', 0.1),
             clip_variant=mcfg.get('clip_variant', 'ViT-B/16'),
+            feature_dim=mcfg.get('feature_dim', None),
         )
         state_dict = torch.load(checkpoint_path, map_location=self.device)
         if isinstance(state_dict, dict) and 'model_state_dict' in state_dict:

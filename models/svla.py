@@ -260,7 +260,8 @@ class SVLA(nn.Module):
                  cfa_bottleneck: int = 256,
                  cfa_prefix_rank: int = 16,
                  cfa_dropout: float = 0.1,
-                 clip_variant: str = "ViT-B/16"):
+                 clip_variant: str = "ViT-B/16",
+                 feature_dim: int = None):
         super().__init__()
 
         self.num_class = num_class
@@ -272,6 +273,11 @@ class SVLA(nn.Module):
         self.prompt_postfix = prompt_postfix
         self.device = device
         self.clip_variant = clip_variant
+
+        # 特征投影层：当预提取特征维度与 visual_width 不一致时启用
+        # 例如 SVA 数据集的 ViT-B/16 特征 (512-dim) 用于 ViT-L/14 配置 (768-dim)
+        feat_dim = feature_dim if feature_dim is not None else visual_width
+        self.feat_proj = nn.Linear(feat_dim, visual_width) if feat_dim != visual_width else None
 
         self.temporal = Transformer(
             width=visual_width,
@@ -439,6 +445,8 @@ class SVLA(nn.Module):
 
     def encode_video(self, images, padding_mask, lengths):
         images = images.to(torch.float)
+        if self.feat_proj is not None:
+            images = self.feat_proj(images)
         position_ids = torch.arange(self.visual_length, device=self.device)
         position_ids = position_ids.unsqueeze(0).expand(images.shape[0], -1)
         frame_position_embeddings = self.frame_position_embeddings(position_ids)
