@@ -271,6 +271,7 @@ class SVLA(nn.Module):
         self.prompt_prefix = prompt_prefix
         self.prompt_postfix = prompt_postfix
         self.device = device
+        self.clip_variant = clip_variant
 
         self.temporal = Transformer(
             width=visual_width,
