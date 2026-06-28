@@ -52,6 +52,8 @@ class AppState:
         # report_id -> {"report": dict, "keyframes": {filename: abspath}}
         self.reports: Dict[str, dict] = {}
         self.reports_dir: str = "reports/api"
+        # 默认支持格式（无模型模式时使用），init_state 时从配置覆盖
+        self.supported_formats: set = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm"}
 
 
 state = AppState()
@@ -68,6 +70,10 @@ def init_state(config_path: str, checkpoint_path: Optional[str]):
     state.config = load_app_config(config_path)
     state.checkpoint_path = checkpoint_path or ""
     os.makedirs(state.reports_dir, exist_ok=True)
+    # 从配置读取支持的视频格式（统一事实来源）
+    fmts = state.config.get("data", {}).get("supported_formats", [])
+    if fmts:
+        state.supported_formats = {"." + str(f).lower().lstrip(".") for f in fmts}
     if checkpoint_path:
         state.detector = NSFWDetector(state.config, checkpoint_path=checkpoint_path)
         state.detector.model.eval()
@@ -263,8 +269,8 @@ async def detect_video(
 
     filename = file.filename or "upload.mp4"
     ext = os.path.splitext(filename)[1].lower()
-    if ext not in SUPPORTED_FORMATS:
-        raise HTTPException(status_code=400, detail=f"不支持的视频格式: {ext}，支持: {sorted(SUPPORTED_FORMATS)}")
+    if ext not in state.supported_formats:
+        raise HTTPException(status_code=400, detail=f"不支持的视频格式: {ext}，支持: {sorted(state.supported_formats)}")
 
     # 保存上传文件到临时路径
     tmp_dir = tempfile.mkdtemp(prefix="nsfw_upload_")

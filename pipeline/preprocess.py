@@ -106,10 +106,10 @@ class VideoPreprocessor:
         return np.array(keyframe_indices, dtype=int)
 
     def validate_format(self, video_path):
+        ext = os.path.splitext(video_path)[1].lstrip(".").lower()
+        if ext not in [fmt.lower() for fmt in self.supported_formats]:
+            raise ValueError(f"Unsupported video format: .{ext}. Supported formats: {self.supported_formats}")
         if not os.path.exists(video_path):
             raise ValueError(f"Video file not found: {video_path}")
         if not os.path.isfile(video_path):
             raise ValueError(f"Path is not a file: {video_path}")
-        ext = os.path.splitext(video_path)[1].lstrip(".").lower()
-        if ext not in [fmt.lower() for fmt in self.supported_formats]:
-            raise ValueError(f"Unsupported video format: .{ext}. Supported formats: {self.supported_formats}")

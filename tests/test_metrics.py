@@ -23,8 +23,8 @@ def test_video_level_f1():
     assert 0.0 <= f1 <= 1.0
 
 def test_class_level_metrics():
-    scores = [[0.1]*7, [0.9]*7, [0.5]*7]
-    labels = [0, 1, 2]
+    scores = [[0.1]*7, [0.9]*7, [0.5]*7, [0.3]*7, [0.8]*7, [0.2]*7, [0.6]*7]
+    labels = [0, 1, 2, 3, 4, 5, 6]
     results = compute_class_level_metrics(scores, labels, num_classes=7)
     assert len(results) == 7
     for c, m in results.items():

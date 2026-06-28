@@ -12,7 +12,7 @@ def sample_config():
                   "cfa_bottleneck": 256, "cfa_prefix_rank": 16, "cfa_dropout": 0.1},
         "data": {"dataset": "SVA", "feature_dir": "data/features", "train_csv": "data/splits/train.csv",
                  "test_csv": "data/splits/test.csv", "num_segments": 10, "frame_sample_rate": 1,
-                 "supported_formats": ["mp4", "avi", "mov", "flv", "mkv"]},
+                 "supported_formats": ["mp4", "avi", "mov", "flv", "mkv", "wmv", "webm"]},
         "training": {"batch_size": 32, "lr": 0.0001, "weight_decay": 0.0005, "epochs": 50,
                      "scheduler": "cosine", "warmup_epochs": 5, "loss": "bce", "class_loss_alpha": 1.0,
                      "checkpoint_dir": "checkpoints", "log_interval": 10, "early_stop_patience": 10,

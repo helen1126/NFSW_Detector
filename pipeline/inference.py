@@ -115,10 +115,6 @@ class NSFWDetector:
         start_time = time.time()
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
-        ext = os.path.splitext(video_path)[1].lower()
-        supported_formats = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'}
-        if ext not in supported_formats:
-            raise ValueError(f"Unsupported video format: {ext}")
 
         try:
             preprocess_result = self.preprocessor.preprocess(video_path, num_segments=num_segments)

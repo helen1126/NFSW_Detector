@@ -40,6 +40,8 @@ data:
     - mov
     - flv
     - mkv
+    - wmv
+    - webm
 
 training:
   batch_size: 32
