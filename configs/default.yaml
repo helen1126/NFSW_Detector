@@ -167,11 +167,11 @@ calibration:
   path: checkpoints/calibrator.pkl
 
 ood:
-  enabled: false
+  enabled: true
   threshold: 0.5  # ood_score >= threshold 判为 OOD
 
 frame_quality:
-  enabled: false  # 启用后对模糊/过暗帧降权
+  enabled: true  # 启用后对模糊/过暗帧降权
 
 zero_shot:
   enabled: false

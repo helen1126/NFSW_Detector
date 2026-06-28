@@ -89,6 +89,28 @@ class NSFWDetector:
         if zs_cfg.get('enabled', False) and self.feature_extractor is not None:
             self._init_extra_categories(zs_cfg.get('extra_categories', {}))
 
+        # 初始化 re-rank 文本特征（始终启用，复用已加载的 CLIP，绕开 SVLA prompt 偏置）
+        self.rerank_text_feats = {}
+        if self.feature_extractor is not None:
+            self._init_rerank_text_feats()
+
+    def _init_rerank_text_feats(self):
+        """为 7 个标准类别预计算 3-prompt 平均文本特征（纯 CLIP 编码，绕开 SVLA 偏置）。"""
+        text_prompts_cfg = self.config.get('text_prompts', {})
+        labels_cfg = self.config.get('labels', {})
+        for cid, cat_info in labels_cfg.items():
+            cat_key = cat_info.get('en', '').lower()
+            if cat_key == 'normal':
+                continue
+            prompts = text_prompts_cfg.get(cat_key, [])
+            if not prompts:
+                continue
+            text_feats = self.feature_extractor.extract_text_features(prompts)  # [N, D]
+            mean_feat = text_feats.mean(axis=0)
+            mean_feat = mean_feat / (np.linalg.norm(mean_feat) + 1e-10)
+            cat_en = cat_info['en']  # "Smoke", "Blood", ...
+            self.rerank_text_feats[cat_en] = mean_feat
+
     def _init_extra_categories(self, extra_categories_cfg):
         """初始化零样本扩展类别，预计算文本特征。
 
@@ -236,19 +258,21 @@ class NSFWDetector:
             attention_weights = np.zeros(S)
 
         # 仅在有效帧范围内计算异常分数，过滤 padding 帧干扰
-        valid_scores = segment_scores.reshape(-1)[:valid_length]
+        raw_valid_scores = segment_scores.reshape(-1)[:valid_length]
 
-        # 改动 4: 关键帧质量加权（低质量帧分数降权）
+        # 关键帧质量加权：仅用于 category_scores 聚合，不影响 anomaly_score
+        weighted_valid_scores = raw_valid_scores
         if self.frame_quality_enabled and raw_frames is not None:
             qualities = self._compute_frame_quality(raw_frames)
             if len(qualities) >= valid_length:
                 seg_qualities = qualities[:valid_length]
             else:
                 seg_qualities = np.pad(qualities, (0, valid_length - len(qualities)))
-            valid_scores = valid_scores * seg_qualities
+            weighted_valid_scores = raw_valid_scores * seg_qualities
 
+        # anomaly_score 基于原始分数，保持与 evaluate.py 和阈值标定一致
         if valid_length > 0:
-            anomaly_score = float(np.max(valid_scores))
+            anomaly_score = float(np.max(raw_valid_scores))
         else:
             anomaly_score = 0.0
 
@@ -272,10 +296,12 @@ class NSFWDetector:
         # 最终置信度 = anomaly_score × P(cat_i | anomaly)
         category_scores = {}
         if logits2 is not None and class_scores_raw.shape[0] > 0 and valid_length > 0:
-            # 取异常分数最高的 top-k 帧的类别分布平均（而非单帧 argmax），降低噪声
+            # 异常分加权 top-k：让 peak 帧主导类别分布，过渡帧仅提供次要信号
             k = min(3, valid_length)
-            topk_indices = np.argsort(valid_scores)[-k:]
-            frame_probs = class_scores_raw[topk_indices].mean(axis=0)  # [num_text]
+            topk_indices = np.argsort(weighted_valid_scores)[-k:]
+            weights = weighted_valid_scores[topk_indices]
+            weights = weights / (weights.sum() + 1e-10)
+            frame_probs = (class_scores_raw[topk_indices] * weights[:, None]).sum(axis=0)
             normal_prob = float(frame_probs[0])
             anomaly_prob = 1.0 - normal_prob
 
@@ -294,6 +320,19 @@ class NSFWDetector:
             for idx in range(1, len(text_list)):
                 cat_en = LABEL_MAP[idx-1]['en']
                 category_scores[cat_en] = 0.0
+
+        # CLIP 零样本 re-rank：用纯 CLIP 文本特征（3-prompt 平均）覆盖 logits2 的偏置类别分数
+        if self.rerank_text_feats and is_harmful:
+            valid_features = features[:valid_length]  # [valid_length, D]
+            valid_feats_norm = valid_features / (np.linalg.norm(valid_features, axis=-1, keepdims=True) + 1e-10)
+            rerank_scores = {}
+            for cat_en, text_feat in self.rerank_text_feats.items():
+                sim = valid_feats_norm @ text_feat  # [valid_length]
+                k = min(3, len(sim))
+                topk_sim = float(np.sort(sim)[-k:].mean())
+                rerank_scores[cat_en] = anomaly_score * max(0.0, topk_sim)
+            # 用 re-rank 分数覆盖 category_scores（纯 CLIP 信号，绕开 SVLA 偏置）
+            category_scores = rerank_scores
 
         # 改动 2: 零样本新类别扩展
         extra_category_info = {}
@@ -316,11 +355,12 @@ class NSFWDetector:
                     }
 
         harmful_segments = self._locate_harmful_segments(
-            valid_scores, timestamps, self.threshold, fps, category_scores
+            raw_valid_scores, timestamps, self.threshold, fps,
+            {'class_scores_raw': class_scores_raw}
         )
 
         keyframe_paths = self._extract_keyframes(
-            video_path, harmful_segments, valid_scores, timestamps
+            video_path, harmful_segments, raw_valid_scores, timestamps
         )
 
         predicted_categories = [
@@ -433,10 +473,15 @@ class NSFWDetector:
             end_time = timestamps[end_idx][1]
             peak_score = float(scores_1d[peak_idx])
 
-            # 修复 LABEL_MAP 索引错位：segment_scores 是 1D 无法取类别，
-            # 改为从 category_scores 取 top 类（与 category_scores 计算保持一致）
-            if category_scores:
-                category_en = max(category_scores.items(), key=lambda x: x[1])[0]
+            # 段级类别：用该段 peak 帧的 logits2 取 argmax（跳过 normal）
+            if category_scores is not None and 'class_scores_raw' in category_scores:
+                cs_raw = category_scores['class_scores_raw']
+                if peak_idx < cs_raw.shape[0]:
+                    seg_probs = cs_raw[peak_idx]
+                    seg_cat_idx = int(np.argmax(seg_probs[1:])) + 1
+                    category_en = LABEL_MAP[seg_cat_idx-1]['en']
+                else:
+                    category_en = 'unknown'
             else:
                 category_en = 'unknown'
             category = EN_TO_ZH.get(category_en, category_en)

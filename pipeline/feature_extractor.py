@@ -65,7 +65,9 @@ class CLIPFeatureExtractor:
     def extract_text_features(self, text_prompts):
         tokens = clip.tokenize(text_prompts).to(self.device)
         with torch.no_grad():
-            text_features = self.model.encode_text(tokens)
+            # 本地 CLIP.encode_text 需双参数: text=token_embedding, token=原始 tokens
+            token_embedding = self.model.encode_token(tokens)
+            text_features = self.model.encode_text(token_embedding, tokens)
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
         return text_features.cpu().numpy()
 
