@@ -46,7 +46,8 @@ NFSW_Detector/
 │   ├── preprocess.py         视频预处理与帧采样
 │   ├── feature_extractor.py  CLIP 特征提取
 │   ├── inference.py          端到端推理 (NSFWDetector)
-│   └── alert.py              预警信息生成
+│   ├── alert.py              预警信息生成
+│   └── calibration.py        分数校准 (ScoreCalibrator)
 ├── demo/                     Demo 系统
 │   ├── app.py                Gradio 主入口
 │   └── visualize.py          Plotly 可视化工具
@@ -66,7 +67,8 @@ NFSW_Detector/
 │   ├── detect.sh / detect.ps1
 │   ├── quickstart.sh / quickstart.ps1
 │   ├── generate_splits.py           随机划分生成
-│   └── generate_reference_splits.py 参考划分生成（推荐）
+│   ├── generate_reference_splits.py 参考划分生成（推荐）
+│   └── fit_calibrator.py            离线拟合分数校准器
 ├── docs/                     项目文档
 │   ├── API.md                前端对接 API 文档
 │   └── ARCHITECTURE.md       模块结构与数据流
@@ -346,6 +348,74 @@ python main.py demo --checkpoint checkpoints/best_model.pth
 | inference | 推理参数 | anomaly_threshold, alert_levels, max_duration |
 | demo | Demo 配置 | port, share, max_file_size |
 | logging | 日志配置 | level, log_file, tensorboard |
+| calibration | 分数校准 | enabled, path |
+| ood | OOD 检测 | enabled, threshold |
+| frame_quality | 帧质量加权 | enabled |
+| zero_shot | 零样本扩展 | enabled, extra_categories |
+
+## 推理增强（无须重训）
+
+支持 4 个推理时增强功能，通过配置开关启用，默认全部关闭以保证向后兼容：
+
+| 增强项 | 配置段 | 说明 |
+|--------|--------|------|
+| 分数校准 | `calibration` | Isotonic Regression 把 raw sigmoid 映射到真实概率 |
+| OOD 检测 | `ood` | 基于类别分布熵识别分布外内容 |
+| 关键帧质量加权 | `frame_quality` | 模糊/过暗帧降权 |
+| 零样本新类别 | `zero_shot` | CLIP 文本-图像相似度检测训练集外类别 |
+
+### 分数校准
+
+校准器把模型的 raw sigmoid 分数映射到真实概率，提升分数的可解释性。需先离线拟合：
+
+```bash
+python scripts/fit_calibrator.py --config configs/default.yaml \
+    --checkpoint checkpoints/best_model.pth --output checkpoints/calibrator.pkl
+```
+
+然后在配置中启用：
+```yaml
+calibration:
+  enabled: true
+  path: checkpoints/calibrator.pkl
+```
+
+### OOD 检测
+
+基于类别分布的熵 + 最大概率识别分布外内容（如训练集未见过的场景）。`ood_score >= threshold` 时标记为 OOD。
+
+### 关键帧质量加权
+
+综合 Laplacian 方差（清晰度）、亮度合理性、Shannon 熵评估每帧质量，对低质量帧的异常分数降权。
+
+### 零样本新类别扩展
+
+通过 CLIP 文本-图像相似度检测训练集外的自定义类别（如赌博、毒品），无须重新训练。在 `zero_shot.extra_categories` 中配置类别名、文本提示和中文标签。
+
+### 采样帧数可选
+
+CLI 和 API 支持请求级覆盖采样帧数：
+
+```bash
+# CLI
+python main.py detect --config configs/default.yaml --checkpoint checkpoints/best_model.pth \
+    --video test.mp4 --num-segments 20
+
+# API
+curl -X POST http://localhost:8000/api/v1/detect \
+    -F "file=@test.mp4" -F "num_segments=20"
+```
+
+### 图片检测 API
+
+支持对单张图片进行有害内容检测（视为单帧视频复用推理管线）：
+
+```bash
+curl -X POST http://localhost:8000/api/v1/detect_image \
+    -F "file=@test.jpg"
+```
+
+支持的图片格式：jpg, jpeg, png, bmp, webp。返回结构与视频检测一致。
 
 ## 测试
 

@@ -21,7 +21,7 @@ class VideoPreprocessor:
         self.num_segments = config.get("data", {}).get("num_segments", 10)
         self.max_duration = config.get("inference", {}).get("max_duration", 300)
 
-    def preprocess(self, video_path, reduced_sample_rate=False):
+    def preprocess(self, video_path, reduced_sample_rate=False, num_segments=None):
         self.validate_format(video_path)
         frames, fps, total_frames, duration = self._decode(video_path)
         effective_sample_rate = self.frame_sample_rate
@@ -33,7 +33,8 @@ class VideoPreprocessor:
             effective_sample_rate = max(1, effective_sample_rate // divisor)
         sampled_indices = np.arange(0, len(frames), effective_sample_rate)
         sampled_frames = frames[sampled_indices]
-        uniform_indices = self.uniform_sample(sampled_frames, self.num_segments)
+        effective_num_segments = num_segments if num_segments is not None else self.num_segments
+        uniform_indices = self.uniform_sample(sampled_frames, effective_num_segments)
         final_frames = sampled_frames[uniform_indices]
         final_frame_indices = sampled_indices[uniform_indices].tolist()
         if fps > 0:

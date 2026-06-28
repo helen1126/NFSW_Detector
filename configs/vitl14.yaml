@@ -5,6 +5,7 @@
 model:
   name: SVLA
   clip_variant: ViT-L/14
+  feature_extractor_variant: ViT-B/16  # 在线推理特征提取器，必须与训练数据预提取特征一致（SVA 为 512 维）
   embed_dim: 768
   visual_width: 768
   feature_dim: 512

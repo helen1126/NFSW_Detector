@@ -158,3 +158,29 @@ text_prompts:
     - "politically sensitive content and symbols"
     - "unauthorized political commentary"
     - "political slander or misinformation"
+
+# 推理增强配置（默认全 false，向后兼容）
+calibration:
+  enabled: false  # 需先运行 scripts/fit_calibrator.py 生成 checkpoints/calibrator.pkl
+  path: checkpoints/calibrator.pkl
+
+ood:
+  enabled: false
+  threshold: 0.5  # ood_score >= threshold 判为 OOD
+
+frame_quality:
+  enabled: false  # 启用后对模糊/过暗帧降权
+
+zero_shot:
+  enabled: false
+  extra_categories:
+    gambling:
+      prompts:
+        - "people gambling and betting"
+        - "casino games and lottery tickets"
+      zh: 赌博
+    drug:
+      prompts:
+        - "drug use and paraphernalia"
+        - "illegal substance abuse"
+      zh: 毒品

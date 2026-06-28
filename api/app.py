@@ -37,6 +37,7 @@ from api.schemas import (
 
 API_VERSION = "1.0.0"
 SUPPORTED_FORMATS = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm"}
+SUPPORTED_IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 
 class AppState:
@@ -143,6 +144,10 @@ def _serialize_detection(result, report_id: str) -> dict:
             for seg in result.harmful_segments
         ],
         "keyframe_urls": keyframe_urls,
+        "calibrated_score": float(getattr(result, 'calibrated_score', 0.0)),
+        "ood_score": float(getattr(result, 'ood_score', 0.0)),
+        "is_ood": bool(getattr(result, 'is_ood', False)),
+        "extra_category_info": dict(getattr(result, 'extra_category_info', {})),
     }
 
 
@@ -185,6 +190,7 @@ async def root():
             "GET /api/v1/health",
             "GET /api/v1/categories",
             "POST /api/v1/detect",
+            "POST /api/v1/detect_image",
             "GET /api/v1/reports/{report_id}",
             "GET /api/v1/keyframes/{filename}",
         ],
@@ -250,6 +256,7 @@ async def get_categories():
 async def detect_video(
     file: UploadFile = File(..., description="视频文件"),
     threshold: float = Query(None, ge=0.0, le=1.0, description="临时异常阈值，覆盖配置默认值"),
+    num_segments: int = Query(None, ge=1, le=128, description="采样帧数，覆盖配置默认值"),
 ):
     if state.detector is None:
         raise HTTPException(status_code=503, detail="模型未加载，请通过 --checkpoint 启动或设置 NSFW_CHECKPOINT 环境变量")
@@ -274,7 +281,7 @@ async def detect_video(
             state.detector.threshold = threshold
 
         try:
-            result = state.detector.detect(tmp_path)
+            result = state.detector.detect(tmp_path, num_segments=num_segments)
         except FileNotFoundError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except ValueError as e:
@@ -303,6 +310,74 @@ async def detect_video(
         return DetectResponseSchema(detection=detection_data, report=report_data)
     finally:
         # 清理上传的临时视频文件（关键帧已由 detector 保存到独立目录，不受影响）
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+@app.post(
+    "/api/v1/detect_image",
+    response_model=DetectResponseSchema,
+    responses={
+        400: {"model": ErrorResponseSchema, "description": "图片格式不支持或文件无效"},
+        500: {"model": ErrorResponseSchema, "description": "检测过程内部错误"},
+        503: {"model": ErrorResponseSchema, "description": "模型未加载"},
+    },
+    tags=["检测"],
+    summary="上传图片并检测",
+    description=(
+        "上传图片文件执行有害内容检测。图片视为单帧视频复用推理管线。"
+        "返回结构与 /detect 一致。\n\n"
+        "**支持的格式：** jpg, jpeg, png, bmp, webp"
+    ),
+)
+async def detect_image(
+    file: UploadFile = File(..., description="图片文件"),
+    threshold: float = Query(None, ge=0.0, le=1.0, description="临时异常阈值，覆盖配置默认值"),
+):
+    if state.detector is None:
+        raise HTTPException(status_code=503, detail="模型未加载，请通过 --checkpoint 启动或设置 NSFW_CHECKPOINT 环境变量")
+
+    filename = file.filename or "upload.jpg"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in SUPPORTED_IMAGE_FORMATS:
+        raise HTTPException(status_code=400, detail=f"不支持的图片格式: {ext}，支持: {sorted(SUPPORTED_IMAGE_FORMATS)}")
+
+    tmp_dir = tempfile.mkdtemp(prefix="nsfw_img_")
+    tmp_path = os.path.join(tmp_dir, filename)
+    try:
+        with open(tmp_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+
+        original_threshold = None
+        if threshold is not None:
+            original_threshold = state.config.get("inference", {}).get("anomaly_threshold")
+            state.config.setdefault("inference", {})["anomaly_threshold"] = threshold
+            state.detector.threshold = threshold
+
+        try:
+            result = state.detector.detect_image(tmp_path)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=f"推理失败: {e}")
+        finally:
+            if original_threshold is not None:
+                state.config["inference"]["anomaly_threshold"] = original_threshold
+                state.detector.threshold = original_threshold
+
+        report = state.alert_gen.generate(result)
+        keyframe_map = {os.path.basename(p): p for p in result.keyframe_paths}
+        state.reports[report.report_id] = {
+            "report": report,
+            "keyframes": keyframe_map,
+        }
+        _persist_report(report)
+
+        detection_data = _serialize_detection(result, report.report_id)
+        report_data = _serialize_report(report, report.report_id)
+        return DetectResponseSchema(detection=detection_data, report=report_data)
+    finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 

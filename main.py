@@ -62,6 +62,8 @@ if __name__ == "__main__":
     detect_parser.add_argument("--output", default="results/detection")
     detect_parser.add_argument("--threshold", type=float, default=None)
     detect_parser.add_argument("--save-frames", action="store_true")
+    detect_parser.add_argument("--num-segments", type=int, default=None,
+                              help="采样帧数，覆盖配置默认值")
 
     demo_parser = subparsers.add_parser("demo", help="Launch demo application")
     demo_parser.add_argument("--config", default="configs/default.yaml")
@@ -165,7 +167,7 @@ if __name__ == "__main__":
         if args.threshold is not None:
             config["inference"]["anomaly_threshold"] = args.threshold
         detector = NSFWDetector(config, checkpoint_path=args.checkpoint)
-        result = detector.detect(args.video)
+        result = detector.detect(args.video, num_segments=args.num_segments)
         alert_generator = AlertGenerator(config)
         report = alert_generator.generate(result)
         os.makedirs(args.output, exist_ok=True)

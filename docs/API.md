@@ -102,6 +102,7 @@ uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
 | GET | `/api/v1/health` | 健康检查 | - | `HealthResponseSchema` |
 | GET | `/api/v1/categories` | 类别与预警等级 | - | `CategoriesResponseSchema` |
 | POST | `/api/v1/detect` | 上传视频检测 | `multipart/form-data` | `DetectResponseSchema` |
+| POST | `/api/v1/detect_image` | 上传图片检测 | `multipart/form-data` | `DetectResponseSchema` |
 | GET | `/api/v1/reports/{report_id}` | 获取预警报告 | - | `AlertReportSchema` |
 | GET | `/api/v1/keyframes/{filename}` | 获取关键帧图片 | `?report_id=` | `image/jpeg` |
 
@@ -113,6 +114,7 @@ uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
 |------|------|------|------|
 | `file` | file | 是 | 视频文件（支持 mp4/avi/mov/mkv/wmv/flv/webm） |
 | `threshold` | float | 否 | 临时异常阈值 [0,1]，覆盖配置默认值 |
+| `num_segments` | int | 否 | 采样帧数 [1,128]，覆盖配置默认值 |
 
 **响应**：`DetectResponseSchema`（含 `detection` 与 `report` 两部分）
 
@@ -160,6 +162,46 @@ uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
 |--------|------|
 | 400 | 视频格式不支持 / 文件无效 |
 | 500 | 推理过程内部错误（如显存不足） |
+| 503 | 模型未加载 |
+
+### 3.3.1 POST /api/v1/detect_image — 图片检测
+
+上传图片文件执行有害内容检测。图片视为单帧视频复用推理管线，返回结构与 `/detect` 一致。
+
+**请求**：`multipart/form-data`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `file` | file | 是 | 图片文件（支持 jpg/jpeg/png/bmp/webp） |
+| `threshold` | float | 否 | 临时异常阈值 [0,1]，覆盖配置默认值 |
+
+**响应**：`DetectResponseSchema`（与 `/detect` 相同）
+
+**调用示例**：
+
+```bash
+curl -X POST http://localhost:8000/api/v1/detect_image \
+    -F "file=@test.jpg" -F "threshold=0.5"
+```
+
+```python
+import requests
+with open("test.jpg", "rb") as f:
+    resp = requests.post(
+        "http://localhost:8000/api/v1/detect_image",
+        files={"file": ("test.jpg", f, "image/jpeg")},
+        data={"threshold": 0.5},
+    )
+data = resp.json()
+print(data["detection"]["anomaly_score"], data["report"]["alert_level"])
+```
+
+**错误响应**：
+
+| 状态码 | 说明 |
+|--------|------|
+| 400 | 图片格式不支持 / 文件无效 |
+| 500 | 推理过程内部错误 |
 | 503 | 模型未加载 |
 
 ### 3.4 GET /api/v1/reports/{report_id} — 获取报告
@@ -227,6 +269,19 @@ console.log(data.report.alert_level, data.report.anomaly_score);
 - `NSFW_CHECKPOINT`：模型权重路径（用于 uvicorn 直接启动时）
 
 CORS 默认允许所有来源（`allow_origins=["*"]`），生产环境应在 `api/app.py` 中收紧。
+
+### 3.9 推理增强字段
+
+当启用推理增强功能（校准/OOD/质量加权/零样本扩展）时，`DetectionResultSchema` 会返回以下可选字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `calibrated_score` | float | 校准后的异常分数（真实概率），需启用 `calibration` |
+| `ood_score` | float | OOD 分数 [0,1]，越高越像分布外内容，需启用 `ood` |
+| `is_ood` | bool | 是否判为分布外内容（`ood_score >= threshold`） |
+| `extra_category_info` | dict | 零样本扩展类别的元信息，形如 `{"Gambling": {"zh": "赌博", "score": 0.3, "is_extra": true}}` |
+
+> 未启用对应增强时，字段为默认值（`calibrated_score=0.0`, `ood_score=0.0`, `is_ood=false`, `extra_category_info={}`）。
 
 ---
 
@@ -356,6 +411,8 @@ alert_gen.export_csv(reports, "reports.csv")
 | `attention_weights` | number[] | 注意力权重（当前实现为占位 0 数组，长度=段数） | `[0, 0, ...]` |
 | `processing_time` | float | 端到端处理耗时（秒） | `3.21` |
 | `detection_time` | string | 检测时间戳 `%Y-%m-%d %H:%M:%S` | `"2026-06-25 21:10:00"` |
+
+> 推理增强字段（`calibrated_score` / `ood_score` / `is_ood` / `extra_category_info`）详见 [§3.9](#39-推理增强字段)。
 
 ### 6.1 HarmfulSegment
 
@@ -598,3 +655,4 @@ demo:
 |------|------|
 | 2026-06-25 | 初版：定义 DetectionResult/AlertReport 字段、Gradio API、JSON 报告示例、前端对接建议 |
 | 2026-06-26 | 新增 §3 RESTful API：FastAPI 实现、6 个端点、OpenAPI 文档、curl/Python/JS 调用示例、错误处理与配置说明；章节编号顺延 |
+| 2026-06-28 | 新增推理增强字段（calibrated_score/ood_score/is_ood/extra_category_info）与 POST /api/v1/detect_image 端点；detect 端点新增 num_segments 查询参数；新增 §3.9 推理增强字段说明 |

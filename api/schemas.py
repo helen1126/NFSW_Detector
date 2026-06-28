@@ -36,6 +36,11 @@ class DetectionResultSchema(BaseModel):
     category_scores: Dict[str, float] = Field(..., description="各类条件置信度", example={"Smoke": 0.71, "Blood": 0.12})
     harmful_segments: List[HarmfulSegmentSchema] = Field(..., description="有害时间段列表")
     keyframe_urls: List[str] = Field(..., description="关键帧访问 URL 列表", example=[])
+    # 推理增强字段（可选，向后兼容）
+    calibrated_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="校准后的异常分数（真实概率）", example=0.82)
+    ood_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="OOD 分数，越高越像分布外内容", example=0.15)
+    is_ood: Optional[bool] = Field(False, description="是否判为分布外内容", example=False)
+    extra_category_info: Optional[Dict[str, Dict]] = Field(None, description="零样本扩展类别的元信息（zh 名等）", example={})
 
 
 class AlertReportSchema(BaseModel):
