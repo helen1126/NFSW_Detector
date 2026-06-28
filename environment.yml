@@ -1,0 +1,32 @@
+name: nfs_detector
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch>=2.0
+  - pytorch-cuda=12.1
+  - torchvision
+  - torchaudio
+  - cudatoolkit>=11.8
+  - ffmpeg
+  - numpy
+  - pandas
+  - matplotlib
+  - scikit-learn
+  - pyyaml
+  - pip
+  - pip:
+    - ftfy
+    - regex
+    - tqdm
+    - decord
+    - gradio
+    - plotly
+    - imageio-ffmpeg
+    - opencv-python
+    - tensorboard
+    - pytest
+    - pytest-cov
