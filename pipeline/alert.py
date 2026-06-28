@@ -16,13 +16,13 @@ ALERT_LEVELS = {
 }
 
 CATEGORY_DESCRIPTIONS = {
-    "smoke": "检测到疑似吸烟行为，可能违反平台内容规范",
-    "blood": "检测到血腥画面，可能引起观众不适",
-    "violent": "检测到暴力行为，违反平台社区准则",
-    "abusive": "检测到辱骂行为，可能构成言语骚扰",
-    "sexy": "检测到色情内容，违反平台内容政策",
-    "money": "检测到疑似金钱诈骗内容，存在欺诈风险",
-    "policy": "检测到政治敏感内容，可能违反相关规定",
+    "Smoke": "检测到疑似吸烟行为，可能违反平台内容规范",
+    "Blood": "检测到血腥画面，可能引起观众不适",
+    "Violent": "检测到暴力行为，违反平台社区准则",
+    "Abusive": "检测到辱骂行为，可能构成言语骚扰",
+    "Sexy": "检测到色情内容，违反平台内容政策",
+    "Money": "检测到疑似金钱诈骗内容，存在欺诈风险",
+    "Policy": "检测到政治敏感内容，可能违反相关规定",
 }
 
 ACTION_TEMPLATES = {
@@ -33,13 +33,13 @@ ACTION_TEMPLATES = {
 }
 
 CATEGORY_ZH = {
-    "smoke": "吸烟",
-    "blood": "血腥",
-    "violent": "暴力",
-    "abusive": "辱骂",
-    "sexy": "色情",
-    "money": "金钱诈骗",
-    "policy": "政治敏感",
+    "Smoke": "吸烟",
+    "Blood": "血腥",
+    "Violent": "暴力",
+    "Abusive": "辱骂",
+    "Sexy": "色情",
+    "Money": "金钱诈骗",
+    "Policy": "政治敏感",
 }
 
 

@@ -236,7 +236,7 @@ async def get_categories():
             "id": cid,
             "category_en": cat_en,
             "category_zh": info["zh"],
-            "description": CATEGORY_DESCRIPTIONS.get(cat_en.lower(), f"检测到{info['zh']}内容"),
+            "description": CATEGORY_DESCRIPTIONS.get(cat_en, f"检测到{info['zh']}内容"),
         })
     alert_levels = {k: [v[0], v[1]] for k, v in ALERT_LEVELS.items()}
     return CategoriesResponseSchema(categories=categories, alert_levels=alert_levels)

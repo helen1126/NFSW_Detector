@@ -227,7 +227,7 @@ class NSFWDetector:
             text_features, logits1, logits2, shot_slices, attn_weights = self.model(
                 features_tensor, padding_mask, text_list, lengths
             )
-            segment_scores = torch.sigmoid(logits1[:, 0]).cpu().numpy()
+            segment_scores = torch.sigmoid(logits1.squeeze(-1)).cpu().numpy()
             if logits2 is not None:
                 class_probs = torch.softmax(logits2, dim=-1)  # [B, T, num_text]
                 class_scores_raw = class_probs[0].cpu().numpy()  # [T, num_text]
@@ -281,21 +281,18 @@ class NSFWDetector:
 
             if anomaly_prob > 1e-6:
                 for idx in range(1, len(text_list)):
-                    cat_key = text_list[idx]
-                    cat_en = cat_key.capitalize()
+                    cat_en = LABEL_MAP[idx-1]['en']
                     # 条件概率 × 异常分数
                     conditional_prob = float(frame_probs[idx]) / anomaly_prob
                     category_scores[cat_en] = anomaly_score * conditional_prob
             else:
                 # 视频正常，各类别分数趋近 0
                 for idx in range(1, len(text_list)):
-                    cat_key = text_list[idx]
-                    cat_en = cat_key.capitalize()
+                    cat_en = LABEL_MAP[idx-1]['en']
                     category_scores[cat_en] = 0.0
         else:
             for idx in range(1, len(text_list)):
-                cat_key = text_list[idx]
-                cat_en = cat_key.capitalize()
+                cat_en = LABEL_MAP[idx-1]['en']
                 category_scores[cat_en] = 0.0
 
         # 改动 2: 零样本新类别扩展
@@ -319,11 +316,11 @@ class NSFWDetector:
                     }
 
         harmful_segments = self._locate_harmful_segments(
-            segment_scores, timestamps, self.threshold, fps, category_scores
+            valid_scores, timestamps, self.threshold, fps, category_scores
         )
 
         keyframe_paths = self._extract_keyframes(
-            video_path, harmful_segments, segment_scores, timestamps
+            video_path, harmful_segments, valid_scores, timestamps
         )
 
         predicted_categories = [
@@ -393,7 +390,7 @@ class NSFWDetector:
 
     def _locate_harmful_segments(self, segment_scores, timestamps, threshold, fps, category_scores=None):
         if segment_scores.ndim > 1:
-            scores_1d = segment_scores.max(axis=-1)
+            scores_1d = segment_scores.reshape(-1)
         else:
             scores_1d = segment_scores.copy()
 
@@ -472,10 +469,7 @@ class NSFWDetector:
             best_score = -1.0
             for i, (ts_start, ts_end) in enumerate(timestamps):
                 if ts_start >= seg.start_time and ts_end <= seg.end_time:
-                    if segment_scores.ndim > 1:
-                        score = float(segment_scores[i].max())
-                    else:
-                        score = float(segment_scores[i])
+                    score = float(segment_scores[i])
                     if score > best_score:
                         best_score = score
                         best_idx = i

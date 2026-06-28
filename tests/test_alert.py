@@ -10,7 +10,7 @@ def test_alert_levels():
 
 def test_category_descriptions():
     assert len(CATEGORY_DESCRIPTIONS) == 7
-    assert "smoke" in CATEGORY_DESCRIPTIONS
+    assert "Smoke" in CATEGORY_DESCRIPTIONS
 
 def test_action_templates():
     assert "HIGH" in ACTION_TEMPLATES
