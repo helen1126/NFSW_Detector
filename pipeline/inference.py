@@ -501,7 +501,12 @@ class NSFWDetector:
         if not harmful_segments:
             return keyframe_paths
 
-        temp_dir = os.path.join(os.path.dirname(video_path), '.nsfw_keyframes')
+        # 优先使用注入的持久化目录（API 场景），回退到视频同目录（CLI 场景）
+        keyframes_dir = getattr(self, 'keyframes_dir', None)
+        if keyframes_dir:
+            temp_dir = keyframes_dir
+        else:
+            temp_dir = os.path.join(os.path.dirname(video_path), '.nsfw_keyframes')
         os.makedirs(temp_dir, exist_ok=True)
 
         import cv2

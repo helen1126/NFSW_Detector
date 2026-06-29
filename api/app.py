@@ -52,6 +52,8 @@ class AppState:
         # report_id -> {"report": dict, "keyframes": {filename: abspath}}
         self.reports: Dict[str, dict] = {}
         self.reports_dir: str = "reports/api"
+        # 关键帧持久化目录（脱离 tmp_dir 生命周期，避免被清理删除）
+        self.keyframes_dir: str = "reports/keyframes"
         # 默认支持格式（无模型模式时使用），init_state 时从配置覆盖
         self.supported_formats: set = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm"}
 
@@ -70,6 +72,7 @@ def init_state(config_path: str, checkpoint_path: Optional[str]):
     state.config = load_app_config(config_path)
     state.checkpoint_path = checkpoint_path or ""
     os.makedirs(state.reports_dir, exist_ok=True)
+    os.makedirs(state.keyframes_dir, exist_ok=True)
     # 从配置读取支持的视频格式（统一事实来源）
     fmts = state.config.get("data", {}).get("supported_formats", [])
     if fmts:
@@ -77,6 +80,8 @@ def init_state(config_path: str, checkpoint_path: Optional[str]):
     if checkpoint_path:
         state.detector = NSFWDetector(state.config, checkpoint_path=checkpoint_path)
         state.detector.model.eval()
+        # 注入关键帧持久化目录，避免保存到 tmp_dir 被清理删除
+        state.detector.keyframes_dir = state.keyframes_dir
     else:
         state.detector = None
     state.alert_gen = AlertGenerator(state.config)
@@ -315,7 +320,7 @@ async def detect_video(
         report_data = _serialize_report(report, report.report_id)
         return DetectResponseSchema(detection=detection_data, report=report_data)
     finally:
-        # 清理上传的临时视频文件（关键帧已由 detector 保存到独立目录，不受影响）
+        # 清理上传的临时视频文件（关键帧已保存到 state.keyframes_dir，不受影响）
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
